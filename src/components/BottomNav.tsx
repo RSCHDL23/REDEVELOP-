@@ -1,0 +1,28 @@
+"use client";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const tabs = [
+  { href: "/today", label: "Today", icon: <><rect x="3" y="4.5" width="18" height="16.5" rx="2" /><path d="M3 9.5h18M8 2.5v4M16 2.5v4" /></> },
+  { href: "/showings", label: "Showings", icon: <><path d="M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17" /><path d="M3 21h18" /><circle cx="14.5" cy="12" r="1" /></> },
+  { href: "/tour", label: "Tour", icon: <path d="M13 2 4 14h7l-1 8 9-12h-7z" /> },
+  { href: "/deals", label: "Deals", icon: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /> },
+  { href: "/profile", label: "Profile", icon: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></> },
+];
+
+export function BottomNav() {
+  const path = usePathname();
+  return (
+    <nav className="tabbar" aria-label="Main">
+      {tabs.map((t) => {
+        const active = path === t.href || path.startsWith(t.href + "/");
+        return (
+          <Link key={t.href} href={t.href} aria-current={active ? "page" : undefined}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{t.icon}</svg>
+            <span>{t.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}

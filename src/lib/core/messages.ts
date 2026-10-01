@@ -1,0 +1,116 @@
+/**
+ * REquest: drafts every way to ask for a showing, in each listing agent's
+ * preferred method, plus follow-ups and offer notices.
+ */
+
+export type ContactMethod = "app" | "text" | "email" | "call" | "online";
+
+export interface Sender {
+  name: string;
+  brokerage: string;
+  phone: string;
+}
+
+export interface RequestDetails {
+  listingAgentFirstName: string;
+  address: string;
+  dayLabel: string; // "Sat 10/3"
+  timeLabel: string; // "1:00–1:30 PM"
+  buyerNames: string;
+  preApproved: boolean;
+}
+
+export interface Draft {
+  method: ContactMethod;
+  to: string;
+  subject?: string;
+  body: string;
+  actionLabel: string;
+}
+
+const buyers = (d: RequestDetails) => `${d.preApproved ? "pre-approved buyers" : "buyers"}, ${d.buyerNames}`;
+
+export function textRequest(s: Sender, d: RequestDetails): string {
+  return `Hi ${d.listingAgentFirstName}, this is ${s.name} with ${s.brokerage}. I would like to show ${d.address} on ${d.dayLabel} from ${d.timeLabel} to my ${buyers(d)}. Does that time work? Thank you! ${s.phone}`;
+}
+
+export function emailRequest(s: Sender, d: RequestDetails): { subject: string; body: string } {
+  return {
+    subject: `Showing request: ${d.address} · ${d.dayLabel}, ${d.timeLabel}`,
+    body: [
+      `Hi ${d.listingAgentFirstName},`,
+      "",
+      `I would like to schedule a showing of ${d.address} for my ${buyers(d)}.`,
+      "",
+      `Requested time: ${d.dayLabel}, ${d.timeLabel}`,
+      d.preApproved ? "Pre-approval letter attached." : "",
+      "",
+      "Please let me know if that works or suggest another time.",
+      "",
+      s.name,
+      `${s.brokerage} · ${s.phone}`,
+    ]
+      .filter((line, i, all) => !(line === "" && all[i - 1] === ""))
+      .join("\n"),
+  };
+}
+
+export function callScript(s: Sender, d: RequestDetails): string {
+  return `Hi ${d.listingAgentFirstName}, it is ${s.name} with ${s.brokerage}. I am calling to request a showing at ${d.address} on ${d.dayLabel}, ${d.timeLabel}, for my ${buyers(d)}. Is that time open, and are there any access instructions?`;
+}
+
+export function draftsFor(s: Sender, d: RequestDetails, contact: { phone?: string; email?: string; onApp?: boolean; onlineUrl?: string }): Draft[] {
+  const drafts: Draft[] = [];
+  if (contact.onApp) drafts.push({ method: "app", to: "REschedule inbox", body: `Sent inside REschedule with your buyers, pre-approval and the time. ${d.listingAgentFirstName} approves with one tap.`, actionLabel: "Send in REschedule" });
+  if (contact.phone) drafts.push({ method: "text", to: contact.phone, body: textRequest(s, d), actionLabel: "Send text" });
+  if (contact.email) {
+    const e = emailRequest(s, d);
+    drafts.push({ method: "email", to: contact.email, subject: e.subject, body: e.body, actionLabel: "Send email" });
+  }
+  if (contact.onlineUrl) drafts.push({ method: "online", to: contact.onlineUrl, body: `Opens ${d.listingAgentFirstName}'s online scheduler with your buyers, the time and your pre-approval filled in.`, actionLabel: "Open scheduler" });
+  if (contact.phone) drafts.push({ method: "call", to: contact.phone, body: callScript(s, d), actionLabel: `Call ${d.listingAgentFirstName}` });
+  return drafts;
+}
+
+export type CallOutcome = "confirmed" | "voicemail" | "other_time" | "no_answer";
+
+/** The text offered right after a call, matched to how the call went. */
+export function afterCallText(s: Sender, d: RequestDetails, outcome: CallOutcome): string {
+  switch (outcome) {
+    case "confirmed":
+      return `Hi ${d.listingAgentFirstName}, thanks for confirming! As discussed: ${d.address}, ${d.dayLabel} ${d.timeLabel} for ${d.buyerNames}. ${s.name}, ${s.phone}`;
+    case "other_time":
+      return `Hi ${d.listingAgentFirstName}, thanks for the call. Which times work on ${d.dayLabel} for ${d.address}? ${s.name}, ${s.phone}`;
+    default:
+      return `Hi ${d.listingAgentFirstName}, just tried calling. ${textRequest(s, d).replace(`Hi ${d.listingAgentFirstName}, this is `, "This is ")}`;
+  }
+}
+
+/** Device links so the message sends from the agent's own phone and email. */
+export function deviceLink(draft: Draft): string | null {
+  const enc = encodeURIComponent;
+  switch (draft.method) {
+    case "text":
+      return `sms:${draft.to.replace(/[^\d+]/g, "")}?&body=${enc(draft.body)}`;
+    case "email":
+      return `mailto:${draft.to}?subject=${enc(draft.subject ?? "")}&body=${enc(draft.body)}`;
+    case "call":
+      return `tel:${draft.to.replace(/[^\d+]/g, "")}`;
+    case "online":
+      return draft.to;
+    default:
+      return null;
+  }
+}
+
+export function backupOfferNotice(agentFirstName: string, address: string): string {
+  return `Hi ${agentFirstName}, the sellers accepted another offer on ${address}, but they would welcome your buyers as a backup in case it falls through. Want to stay in line?`;
+}
+
+export function acceptedOtherNotice(agentFirstName: string, address: string): string {
+  return `Hi ${agentFirstName}, thank you for your buyers' offer on ${address}. The sellers have accepted another offer. We appreciate your time.`;
+}
+
+export function highestAndBestNotice(address: string, deadline: string, s: Sender): string {
+  return `Multiple offers received on ${address}. Please submit your buyer's highest and best offer by ${deadline}. Send offers to ${s.name}, ${s.phone}. Thank you!`;
+}
