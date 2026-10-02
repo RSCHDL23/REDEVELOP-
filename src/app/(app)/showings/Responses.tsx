@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LengthSelect, TimeSelect } from "@/components/TimeFields";
 import { acceptNewTime, cancel, editRequest, nudge, recordAnswer, respond, type ActionState } from "./actions";
+import { MultiSend } from "@/components/MultiSend";
+import { DENIAL_REASONS } from "@/lib/core/denial";
+import type { Draft } from "@/lib/core/messages";
 
 type Status = "pending" | "approved" | "declined" | "countered" | "cancelled";
 type Slot = { date: string; start: number; minutes: number };
@@ -31,16 +34,43 @@ function SlotFields({ id, slot }: { id: string; slot: Slot }) {
 }
 
 /** Listing side: approve, suggest a new time or decline; edit the suggestion or change the answer later. */
-export function IncomingResponse({ id, status, request, proposal, note }: {
+export function IncomingResponse({ id, status, request, proposal, note, agentFirst, agentOnApp, newTimeDrafts }: {
   id: string; status: Status; request: Slot; proposal: Slot | null; note: string;
+  agentFirst: string; agentOnApp: boolean; newTimeDrafts: Draft[];
 }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(respond, {});
   const [open, setOpen] = useState(status === "pending");
   const [newTime, setNewTime] = useState(false);
+  const [deny, setDeny] = useState(false);
+  const [reason, setReason] = useState("");
+  const [tell, setTell] = useState(false);
 
   useEffect(() => {
-    if (state.ok) { setOpen(false); setNewTime(false); }
-  }, [state]);
+    if (state.ok) { setOpen(false); setNewTime(false); setDeny(false); setTell(!agentOnApp); }
+  }, [state, agentOnApp]);
+
+  const denyForm = (
+    <form action={action} className="card" style={{ background: "#fff", gap: 10 }}>
+      <Hidden id={id} status="declined" />
+      <span className="strong">Why are you denying it?</span>
+      <div className="chips" role="radiogroup" aria-label="Reason">
+        {DENIAL_REASONS.map((r) => (
+          <label key={r} className="chip row" style={{ cursor: "pointer", background: reason === r ? "var(--ink)" : undefined, color: reason === r ? "#fff" : undefined }}>
+            <input type="radio" name="reason" value={r} checked={reason === r} onChange={() => setReason(r)} className="sr-only" required /> {r}
+          </label>
+        ))}
+      </div>
+      <div className="field">
+        <label htmlFor={`dn-${id}`}>{reason === "Other" ? "Reason (required)" : "Details (optional)"}</label>
+        <input id={`dn-${id}`} name="note" className="input" maxLength={220} required={reason === "Other"} placeholder={reason === "Under contract" ? "e.g. Accepted an offer Tuesday" : "e.g. Tenant works nights; try after 5 PM"} />
+      </div>
+      <span className="tiny muted">{agentFirst} sees your reason with the denial.</span>
+      <div className="grid-2">
+        <button type="button" className="btn block" onClick={() => setDeny(false)}>Back</button>
+        <button className="btn red block" disabled={pending || !reason}>{pending ? "Sending…" : "Deny request"}</button>
+      </div>
+    </form>
+  );
 
   if (status === "cancelled") return null;
 
@@ -61,16 +91,30 @@ export function IncomingResponse({ id, status, request, proposal, note }: {
   );
 
   if (newTime) return <div className="stack">{timeForm}{state.error && <p className="error" role="alert">{state.error}</p>}</div>;
+  if (deny) return <div className="stack">{denyForm}{state.error && <p className="error" role="alert">{state.error}</p>}</div>;
 
   if (!open) {
     return (
-      <div className={status === "countered" ? "grid-2" : "stack"}>
-        {status === "countered" && (
-          <button type="button" className="btn yellow block" onClick={() => setNewTime(true)}>Edit new time</button>
+      <div className="stack">
+        <div className={status === "countered" ? "grid-2" : "stack"}>
+          {status === "countered" && (
+            <button type="button" className="btn yellow block" onClick={() => setNewTime(true)}>Edit new time</button>
+          )}
+          <button type="button" className="btn block" onClick={() => setOpen(true)} style={{ background: "rgba(255,255,255,0.7)" }}>
+            Change response
+          </button>
+        </div>
+        {status === "countered" && newTimeDrafts.length > 0 && (
+          tell ? (
+            <div className="card" style={{ background: "#fff", gap: 8 }}>
+              <span className="small strong">{agentOnApp ? `${agentFirst} sees the new time in REschedule. Want to text or email too?` : `${agentFirst} isn't on REschedule. Send the new time:`}</span>
+              <MultiSend drafts={newTimeDrafts} />
+              <button type="button" className="btn block" style={{ border: 0, background: "transparent", minHeight: 32 }} onClick={() => setTell(false)}>Close</button>
+            </div>
+          ) : (
+            <button type="button" className="btn block" style={{ background: "#fff" }} onClick={() => setTell(true)}>Text or email the new time</button>
+          )
         )}
-        <button type="button" className="btn block" onClick={() => setOpen(true)} style={{ background: "rgba(255,255,255,0.7)" }}>
-          Change response
-        </button>
       </div>
     );
   }
@@ -80,7 +124,7 @@ export function IncomingResponse({ id, status, request, proposal, note }: {
       <div className="grid-3">
         <form action={action}><Hidden id={id} status="approved" /><button className="btn green block" disabled={pending || status === "approved"}>Approve</button></form>
         <button type="button" className="btn yellow block" onClick={() => setNewTime(true)} disabled={pending}>New time</button>
-        <form action={action}><Hidden id={id} status="declined" /><button className="btn red block" disabled={pending || status === "declined"}>Deny</button></form>
+        <button type="button" className="btn red block" disabled={pending || status === "declined"} onClick={() => setDeny(true)}>Deny</button>
       </div>
       {status !== "pending" && (
         <button type="button" className="btn block" style={{ border: 0, background: "transparent", minHeight: 36 }} onClick={() => setOpen(false)}>Keep my answer</button>
@@ -96,8 +140,9 @@ type Contact = { name: string; phone: string; email: string };
 const digits = (p: string) => p.replace(/[^\d+]/g, "");
 
 /** Requesting side: edit, resend, accept a new time, cancel, and contact the listing agent. */
-export function SentActions({ id, status, typedIn, listingId, agent, resend, reminded, slot, comments }: {
-  id: string; status: Status; typedIn: boolean; listingId: string | null; agent: Contact; resend: Nudge; reminded: string | null; slot: Slot; comments: string;
+export function SentActions({ id, status, typedIn, listingId, agent, resend, drafts, preferred, onApp, reminded, slot, comments }: {
+  id: string; status: Status; typedIn: boolean; listingId: string | null; agent: Contact; resend: Nudge; drafts: Draft[]; preferred: string[]; onApp: boolean;
+  reminded: string | null; slot: Slot; comments: string;
 }) {
   const router = useRouter();
   const [panel, setPanel] = useState<"resend" | "edit" | null>(null);
@@ -182,13 +227,11 @@ export function SentActions({ id, status, typedIn, listingId, agent, resend, rem
 
       {panel === "resend" && (
         <div className="card" style={{ background: "#fff", gap: 8 }}>
-          <span className="small strong">Request to {first}</span>
-          {resend.subject && <span className="small strong">{resend.subject}</span>}
-          <p className="small" style={{ margin: 0, whiteSpace: "pre-wrap", background: "var(--ground)", padding: 10, borderRadius: 10 }}>{resend.body}</p>
-          <div className="grid-2">
-            <button type="button" className="btn block" onClick={() => setPanel(null)}>Back</button>
-            <button type="button" className="btn primary block" onClick={send} disabled={busy}>{resend.label}</button>
-          </div>
+          <span className="small strong">Resend to {first}</span>
+          <span className="tiny muted">Nothing is sent until you tap send. Edit the message first if you like.</span>
+          {onApp && <button type="button" className="btn dark block" onClick={send} disabled={busy}>Resend in REschedule</button>}
+          {drafts.length > 0 && <MultiSend drafts={drafts} preferred={preferred} onSent={async () => { await nudge(id); setDone(`Opened your app to send it to ${first}.`); }} />}
+          <button type="button" className="btn block" onClick={() => setPanel(null)}>Back</button>
         </div>
       )}
 

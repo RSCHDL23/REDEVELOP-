@@ -5,10 +5,11 @@ import type { RequestStatus, ShowingRequest } from "@/lib/data/types";
 import { dateOf, minutesOfDay, prettyDate, todayISO } from "@/lib/data/dates";
 import { HomeSnapshot } from "@/components/HomeSnapshot";
 import { appOrigin } from "@/lib/server/origin";
-import { nudgeFor } from "@/lib/data/requestMessages";
+import { allDraftsFor, newTimeDraftsFor, nudgeFor } from "@/lib/data/requestMessages";
 import { formatClock } from "@/lib/core/time";
 import { Empty } from "@/components/ui";
 import { IncomingResponse, SentActions } from "./Responses";
+import { SharedHomes } from "./SharedHomes";
 
 export const metadata: Metadata = { title: "Showings" };
 
@@ -50,9 +51,10 @@ function Photo({ r }: { r: ShowingRequest }) {
 
 export default async function ShowingsPage({ searchParams }: { searchParams: Promise<{ tab?: string; show?: string }> }) {
   const { tab = "incoming", show = "all" } = await searchParams;
-  const view = tab === "sent" ? "sent" : "incoming";
+  const view = tab === "sent" ? "sent" : tab === "shared" ? "shared" : "incoming";
   const r = repo();
-  const [all, me, licenses] = await Promise.all([r.listRequests(), r.getMe(), r.listLicenses()]);
+  const [all, me, licenses, shares, clients] = await Promise.all([r.listRequests(), r.getMe(), r.listLicenses(), r.listHomeShares(), r.listClients()]);
+  const newShares = shares.filter((x) => !x.seen).length;
   const today = todayISO();
   const origin = await appOrigin();
   const mine = all.filter((x) => x.direction === view).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
@@ -68,14 +70,18 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
         <Link href="/showings/new" className="btn primary">+ Request</Link>
       </header>
 
-      <nav className="grid-2" aria-label="Which showings">
-        {(["incoming", "sent"] as const).map((t) => (
-          <Link key={t} href={href(t)} className={`btn block ${view === t ? "dark" : ""}`} aria-current={view === t ? "page" : undefined}>
-            {t === "incoming" ? "On my listings" : "I requested"}
-            {count("pending") > 0 && view === t && <span className="pill solid">{count("pending")}</span>}
+      <nav className="grid-3" aria-label="Which showings">
+        {(["incoming", "sent", "shared"] as const).map((t) => (
+          <Link key={t} href={href(t)} className={`btn block ${view === t ? "dark" : ""}`} aria-current={view === t ? "page" : undefined} style={{ padding: "0 6px", fontSize: 13 }}>
+            {t === "incoming" ? "On my listings" : t === "sent" ? "I requested" : "From clients"}
+            {t !== "shared" && count("pending") > 0 && view === t && <span className="pill solid">{count("pending")}</span>}
+            {t === "shared" && newShares > 0 && <span className="pill solid">{newShares}</span>}
           </Link>
         ))}
       </nav>
+
+      {view === "shared" && <SharedHomes shares={shares} clients={clients} />}
+      {view !== "shared" && <>
 
       <nav className="chips" aria-label="Filter by answer">
         {FILTERS.map((f) => (
@@ -162,6 +168,9 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
                 request={slot(x.startsAt, x.endsAt)}
                 proposal={x.status === "countered" && x.proposedStartsAt && x.proposedEndsAt ? slot(x.proposedStartsAt, x.proposedEndsAt) : null}
                 note={x.responseNote}
+                agentFirst={agentFirst}
+                agentOnApp={x.otherAgent.onApp}
+                newTimeDrafts={x.status === "countered" ? newTimeDraftsFor(x, me) : []}
               />
             )}
             {view === "incoming" && (x.otherAgent.phone || x.otherAgent.email) && (
@@ -181,6 +190,9 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
                 agent={{ name: x.otherAgent.name, phone: x.otherAgent.phone, email: x.otherAgent.email }}
                 slot={slot(x.startsAt, x.endsAt)}
                 comments={x.comments}
+                drafts={allDraftsFor(x, me, licenses, origin).filter((d) => d.method !== "app")}
+                preferred={x.otherAgent.contact.methods}
+                onApp={x.otherAgent.onApp}
                 resend={{ method: resend!.draft.method, href: resend!.href, label: resend!.draft.actionLabel, body: resend!.draft.body, subject: resend!.draft.subject }}
                 reminded={x.remindedAt ? `Sent again ${x.reminderCount > 1 ? `${x.reminderCount} times, last ` : ""}${ago(x.remindedAt)}` : null}
               />
@@ -188,6 +200,7 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
           </article>
         );
       })}
+      </>}
     </main>
   );
 }

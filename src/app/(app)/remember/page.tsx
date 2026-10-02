@@ -57,7 +57,7 @@ export default async function RememberPage() {
               years={a.years}
               phone={a.client.phone}
               email={a.client.email}
-              message={anniversaryMessage({ clientFirst: greetingName(a.client.name), years: a.years, agentName: me.fullName, agentPhone: me.phone })}
+              message={anniversaryMessage({ clientFirst: greetingName(a.client.name), years: a.years, agentName: me.fullName, agentPhone: me.phone, seed: a.client.id })}
               post={{
                 address: deal?.address ?? "Home sweet home", city: deal?.city ?? "", photoUrl: listing?.photoUrl ?? null, agentName: me.fullName,
                 brokerage: me.brokerage, phone: me.phone, logoUrl: me.logoUrl, shareUrl: `${origin}/p/${me.slug}`, clientName: greetingName(a.client.name),

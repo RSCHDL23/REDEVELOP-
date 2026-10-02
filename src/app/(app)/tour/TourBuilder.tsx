@@ -365,7 +365,12 @@ function StopCard({ index, address, slot, drive, wait, agent, drafts, preferred,
               <p className="small" style={{ margin: 0, whiteSpace: "pre-wrap", background: "var(--ground)", padding: 10, borderRadius: 10 }}>{draft.body}</p>
             </>
           )}
-          {draft && link && <a className="btn block" href={link} target={draft.method === "online" ? "_blank" : undefined} rel="noreferrer">{draft.actionLabel}</a>}
+          {draft && (
+            <div className="grid-2">
+              {link ? <a className="btn primary block" href={link} target={draft.method === "online" ? "_blank" : undefined} rel="noreferrer">{draft.actionLabel}</a> : <span className="small muted" style={{ alignSelf: "center" }}>Goes out when you tap Send all</span>}
+              {draft.method !== "app" && <button type="button" className="btn block" onClick={() => navigator.clipboard?.writeText(draft.subject ? `${draft.subject}\n\n${draft.body}` : draft.body).catch(() => {})}>Copy message</button>}
+            </div>
+          )}
         </>
       )}
     </article>

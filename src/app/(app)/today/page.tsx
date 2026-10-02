@@ -67,7 +67,7 @@ export default async function TodayPage() {
       <TripAlerts trips={tripsFor(requests, clients, me, today)} />
 
       {newShares.length > 0 && (
-        <Link href="/clients#shared" className="card accent" style={{ color: "var(--ink)" }}>
+        <Link href="/showings?tab=shared" className="card accent" style={{ color: "var(--ink)" }}>
           <span className="strong">🏠 {newShares.length} home{newShares.length > 1 ? "s" : ""} from your clients</span>
           <span className="small muted">{newShares.slice(0, 2).map((h) => `${h.clientName.split(" ")[0]}: ${h.address.split(",")[0]}`).join(" · ")}</span>
         </Link>

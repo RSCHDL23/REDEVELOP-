@@ -47,3 +47,50 @@ export function paymentShock(currentHousing: number, newPayment: number): number
 
 /** NACA Mortgage: no down payment, no closing costs or fees, no mortgage insurance. */
 export const NACA_COSTS: Pick<Costs, "downPct" | "pmiPct"> = { downPct: 0, pmiPct: 0 };
+
+/**
+ * NACA rate buy-down (naca.com/faq/naca-mortgage-product):
+ * 30- and 20-year: 1.5% of the mortgage lowers the rate 0.25% (0.75% per 0.125% step).
+ * 15-year: 1% of the mortgage lowers it 0.25% (0.5% per 0.125% step).
+ * Lowest rate 0.125%. Seller-paid buy-down can't exceed 10% of the price.
+ */
+export const NACA_BUYDOWN = { step: 0.125, minRate: 0.125, sellerCapPct: 10 };
+
+export function nacaBuydownCost(loan: number, fromRate: number, toRate: number, years: number): number {
+  const steps = Math.max(0, Math.round((fromRate - toRate) / NACA_BUYDOWN.step));
+  const pctPerStep = years === 15 ? 0.5 : 0.75;
+  return (loan * pctPerStep * steps) / 100;
+}
+
+/** Lowest-cost NACA buy-down that brings the payment within the approved monthly amount. */
+export function nacaBuydownToAfford(price: number, approvedMonthly: number, startRate: number, c: Omit<Costs, "ratePct" | "downPct" | "pmiPct">) {
+  const costs = (rate: number): Costs => ({ ...c, ratePct: rate, downPct: 0, pmiPct: 0 });
+  const now = paymentFromPrice(price, costs(startRate));
+  if (now.total <= approvedMonthly) return { needed: false as const, rate: startRate, cost: 0, payment: now.total, sellerMax: (price * NACA_BUYDOWN.sellerCapPct) / 100 };
+  for (let rate = startRate - NACA_BUYDOWN.step; rate >= NACA_BUYDOWN.minRate - 1e-9; rate -= NACA_BUYDOWN.step) {
+    const r = Math.round(rate * 1000) / 1000;
+    const p = paymentFromPrice(price, costs(r));
+    if (p.total <= approvedMonthly) {
+      return { needed: true as const, rate: r, cost: nacaBuydownCost(p.loan, startRate, r, c.years), payment: p.total, sellerMax: (price * NACA_BUYDOWN.sellerCapPct) / 100 };
+    }
+  }
+  return null; // not affordable even at the lowest rate
+}
+
+/** Down payment needed for a home to hit a monthly payment target (mortgage insurance drops at 20% down). */
+export function downPaymentForPayment(price: number, target: number, c: Omit<Costs, "downPct">): { downPct: number; amount: number; payment: number } | null {
+  const total = (d: number) => paymentFromPrice(price, { ...c, downPct: d, pmiPct: d >= 20 ? 0 : c.pmiPct }).total;
+  if (total(0) <= target) return { downPct: 0, amount: 0, payment: total(0) };
+  if (total(100) > target) return null; // taxes, insurance and HOA alone are over the target
+  // Payment drops as the down payment grows (with a step down at 20%); search the smallest that works.
+  let lo = 0, hi = 100;
+  if (total(20) <= target) {
+    // Maybe less than 20% works even with mortgage insurance.
+    const below = (() => { let l = 0, h = 19.999; if (total(h) > target) return null; for (let i = 0; i < 50; i++) { const m = (l + h) / 2; if (total(m) <= target) h = m; else l = m; } return h; })();
+    if (below !== null) hi = below; else { lo = 0; hi = 20; return { downPct: 20, amount: price * 0.2, payment: total(20) }; }
+    return { downPct: Math.ceil(hi * 10) / 10, amount: Math.ceil((price * hi) / 100 / 100) * 100, payment: total(hi) };
+  }
+  lo = 20;
+  for (let i = 0; i < 50; i++) { const m = (lo + hi) / 2; if (total(m) <= target) hi = m; else lo = m; }
+  return { downPct: Math.ceil(hi * 10) / 10, amount: Math.ceil((price * hi) / 100 / 100) * 100, payment: total(hi) };
+}

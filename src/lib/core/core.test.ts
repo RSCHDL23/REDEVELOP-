@@ -235,7 +235,9 @@ describe("REmember anniversaries", () => {
       { id: "c", closedOn: "2025-10-05", remember: false },
     ], "2026-10-01");
     expect(list.map((x) => x.client.id)).toEqual(["b", "a"]);
-    expect(anniversaryMessage({ clientFirst: "Chidi", years: 2, agentName: "Donna", agentPhone: "1" })).toContain("2nd home anniversary");
+    const year = (n: number) => anniversaryMessage({ clientFirst: "Chidi", years: n, agentName: "Donna", agentPhone: "1", seed: "c-okafor" });
+    for (let n = 1; n < 10; n++) expect(year(n)).not.toBe(year(n + 1)); // never the same two years in a row
+    expect(new Set([1, 2, 3, 4, 5].map(year)).size).toBe(5);
   });
 });
 
@@ -292,5 +294,43 @@ describe("NACA to-dos", () => {
     const t = dealTodoTemplate({ side: "buyer", loanType: "NACA", hasHoa: false, acceptance: "2026-10-05", milestones: ms });
     expect(t.some((x) => x.title.includes("HAND"))).toBe(true);
     expect(t.some((x) => x.title === "Schedule the home inspection")).toBe(false);
+  });
+});
+
+import { downPaymentForPayment, nacaBuydownCost, nacaBuydownToAfford } from "./mortgage";
+import { readLetter } from "./preapproval";
+describe("NACA buy-down and down payment", () => {
+  const c = { years: 30, taxRatePct: 2, insuranceYear: 1800, hoaMonth: 0 };
+  it("uses NACA's 1.5% per 0.25% rule", () => {
+    expect(nacaBuydownCost(300000, 6.625, 6.375, 30)).toBeCloseTo(4500, 2); // 2 steps x 0.75%
+    expect(nacaBuydownCost(300000, 6.625, 6.375, 15)).toBeCloseTo(3000, 2);
+  });
+  it("finds the cheapest buy-down that fits the approved payment", () => {
+    const r = nacaBuydownToAfford(300000, 2400, 6.625, c)!;
+    expect(r.needed).toBe(true);
+    expect(r.payment).toBeLessThanOrEqual(2400);
+    expect(r.rate).toBeLessThan(6.625);
+    expect(r.sellerMax).toBe(30000);
+    expect(nacaBuydownToAfford(900000, 1500, 6.625, c)).toBeNull();
+  });
+  it("finds the down payment for a target monthly payment", () => {
+    const costs = { ratePct: 6.625, years: 30, taxRatePct: 2, insuranceYear: 1800, hoaMonth: 0, pmiPct: 0.5 };
+    const d = downPaymentForPayment(400000, 3000, costs)!;
+    expect(d.payment).toBeLessThanOrEqual(3000.01);
+    expect(d.downPct).toBeGreaterThan(0);
+    expect(downPaymentForPayment(400000, 500, costs)).toBeNull();
+  });
+});
+describe("pre-approval letter reader", () => {
+  it("pulls the main terms", () => {
+    const t = readLetter(`Lakeshore Home Loans
+Pre-Approval Letter
+Dear Maria and Luis Alvarez,
+Congratulations! You are pre-approved for a Conventional 30-year fixed loan.
+Purchase Price: $650,000   Loan Amount: $617,500
+Down payment of 5% · Interest rate 6.375% (not locked)
+This pre-approval expires on November 30, 2026.`);
+    expect(t).toMatchObject({ lender: "Lakeshore Home Loans", loanType: "Conventional", purchasePrice: 650000, loanAmount: 617500, downPct: 5, ratePct: 6.375, termYears: 30, expiresOn: "2026-11-30" });
+    expect(readLetter("FHA approval up to $289,000. Valid through 12/15/26").expiresOn).toBe("2026-12-15");
   });
 });

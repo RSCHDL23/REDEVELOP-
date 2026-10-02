@@ -199,3 +199,13 @@ export function nudgeDraft(kind: "remind" | "resend", s: Sender, d: RequestDetai
   }
   return { method: "app", to: "", body: `Add ${first}'s phone or email to send this.`, actionLabel: kind === "remind" ? "Send reminder" : "Resend request" };
 }
+
+/** Listing side suggests a different time, by text/email/call, for agents not on REschedule. */
+export function newTimeDrafts(s: Sender, o: { agentFirst: string; address: string; asked: string; offered: string; note?: string }, contact: { phone?: string; email?: string }): Draft[] {
+  const body = `Hi ${o.agentFirst}, ${s.name} with ${s.brokerage} about your showing request for ${o.address}. ${o.asked} doesn't work for the sellers; can you do ${o.offered} instead?${o.note ? ` ${o.note}` : ""} Thank you! ${s.phone}`;
+  const out: Draft[] = [];
+  if (contact.phone) out.push({ method: "text", to: contact.phone, body, actionLabel: "Send text" });
+  if (contact.email) out.push({ method: "email", to: contact.email, subject: `New time for ${o.address}: ${o.offered}`, body, actionLabel: "Send email" });
+  if (contact.phone) out.push({ method: "call", to: contact.phone, body, actionLabel: `Call ${o.agentFirst}` });
+  return out;
+}

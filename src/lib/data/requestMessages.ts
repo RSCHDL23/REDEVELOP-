@@ -1,5 +1,5 @@
 /** Builds the messages for a showing request (first send, reminder, resend, arrival). */
-import { deviceLink, nudgeDraft, type Draft, type RequestDetails, type Sender } from "@/lib/core/messages";
+import { deviceLink, draftsFor, newTimeDrafts, nudgeDraft, type Draft, type RequestDetails, type Sender } from "@/lib/core/messages";
 import { formatClock } from "@/lib/core/time";
 import { dateOf, minutesOfDay, prettyDate } from "./dates";
 import type { Client, License, MapApp, Profile, ShowingRequest } from "./types";
@@ -99,4 +99,20 @@ export function tripsFor(requests: ShowingRequest[], clients: Client[], me: Prof
         partyName: client?.name ?? r.buyerLabel, partyPhone: client?.phone ?? "", partyText: lateText(r, me, "{ETA}", "party"),
       };
     });
+}
+
+/** Every way to send this request to an agent who isn't on REschedule (text, email, call, their scheduler). */
+export function allDraftsFor(r: ShowingRequest, me: Profile, licenses: License[] = [], origin = "", preApproved = true): Draft[] {
+  const a = r.otherAgent;
+  return draftsFor(senderFrom(me, licenses, stateOf(r.home.city)), detailsFor(r, preApproved, origin), { phone: a.phone, email: a.email, onApp: a.onApp, onlineUrl: a.contact.onlineUrl });
+}
+
+/** Listing side's "new time" message for the requesting agent, by text/email/call. */
+export function newTimeDraftsFor(r: ShowingRequest, me: Profile): Draft[] {
+  if (!r.proposedStartsAt || !r.proposedEndsAt) return [];
+  const when = (a: string, b: string) => `${prettyDate(dateOf(a), { weekday: "short", month: "numeric", day: "numeric" })} ${formatClock(minutesOfDay(a))}–${formatClock(minutesOfDay(b))}`;
+  return newTimeDrafts(senderFrom(me), {
+    agentFirst: r.otherAgent.name.split(" ")[0] || "there", address: r.address,
+    asked: when(r.startsAt, r.endsAt), offered: when(r.proposedStartsAt, r.proposedEndsAt), note: r.responseNote || undefined,
+  }, { phone: r.otherAgent.phone, email: r.otherAgent.email });
 }

@@ -25,6 +25,7 @@ export async function sendHome(_prev: ShareState, formData: FormData): Promise<S
     return { error: e instanceof Error && e.message.includes("agent") ? "Choose your agent first: open their REschedule link and tap \"Make them my agent\"." : "That didn't send. Try again." };
   }
   revalidatePath("/clients");
+  revalidatePath("/showings");
   revalidatePath("/today");
   return { ok: "Sent to your agent!" };
 }
@@ -33,5 +34,6 @@ export async function markSeen(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (id) await repo().markShareSeen(id);
   revalidatePath("/clients");
+  revalidatePath("/showings");
   revalidatePath("/today");
 }

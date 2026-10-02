@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { repo } from "@/lib/data";
 import { toTimestamp } from "@/lib/data/dates";
-import { sendLinkFor } from "@/lib/data/requestMessages";
+import { allDraftsFor } from "@/lib/data/requestMessages";
+import type { Draft } from "@/lib/core/messages";
 import { appOrigin } from "@/lib/server/origin";
 
 function refresh() {
@@ -22,7 +23,9 @@ export type ActionState = { ok?: string; error?: string };
 
 // ---------- Listing side: answer or change the answer ----------
 const answer = z.discriminatedUnion("status", [
-  z.object({ id: z.string().min(1), status: z.enum(["approved", "declined", "pending"]), note: z.string().trim().max(280).optional() }),
+  z.object({ id: z.string().min(1), status: z.enum(["approved", "pending"]), note: z.string().trim().max(280).optional() }),
+  // Denials need a reason (under contract, owner/tenant availability… or typed in).
+  z.object({ id: z.string().min(1), status: z.literal("declined"), reason: z.string().trim().min(1, "Pick a reason for the denial.").max(60), note: z.string().trim().max(220).optional() }),
   z.object({ id: z.string().min(1), status: z.literal("countered"), date: DATE, time: TIME, minutes: MINUTES, note: z.string().trim().max(280).optional() }),
 ]);
 
@@ -34,6 +37,10 @@ export async function respond(_prev: ActionState, formData: FormData): Promise<A
     const start = minutesOf(a.time);
     if (start + a.minutes > 24 * 60) return { error: "That runs past midnight. Pick an earlier time." };
     await repo().decideRequest(a.id, { status: "countered", proposedStartsAt: toTimestamp(a.date, start), proposedEndsAt: toTimestamp(a.date, start + a.minutes), note: a.note });
+  } else if (a.status === "declined") {
+    if (a.reason === "Other" && !a.note) return { error: "Type the reason for the denial." };
+    const note = a.reason === "Other" ? a.note! : a.note ? `${a.reason}: ${a.note}` : a.reason;
+    await repo().decideRequest(a.id, { status: "declined", note });
   } else {
     await repo().decideRequest(a.id, { status: a.status, note: a.note });
   }
@@ -97,10 +104,10 @@ const idList = (raw: string) => {
 
 export type NewRequestState = {
   error?: string;
-  /** For agents not on REschedule: the message to send from your phone. */
-  send?: { href: string; label: string; body: string; to: string };
-  /** Calls can't carry documents: a text with the links. */
-  alsoText?: { href: string; label: string };
+  /** For agents not on REschedule: every way to send it (text, email, call, their scheduler), ready to edit. */
+  drafts?: Draft[];
+  preferred?: string[];
+  agentFirst?: string;
 };
 
 export async function createRequest(_prev: NewRequestState, formData: FormData): Promise<NewRequestState> {
@@ -161,13 +168,8 @@ export async function createRequest(_prev: NewRequestState, formData: FormData):
 
   // Not on REschedule: hand back a ready-to-send message.
   const [me, licenses] = await Promise.all([r.getMe(), r.listLicenses()]);
-  const origin = await appOrigin();
-  const send = sendLinkFor(created, me, preApproved, licenses, origin);
-  const phone = created.otherAgent.phone;
-  const alsoText = created.attachments.length && phone && !send.href.startsWith("sms:")
-    ? { href: `sms:${phone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(`Hi ${created.otherAgent.name.split(" ")[0]}, ${me.fullName} here. Documents for my showing request at ${created.address}: ${created.attachments.map((a) => `${a.name} ${origin}${a.url}`).join(" · ")}`)}`, label: `Text ${created.otherAgent.name.split(" ")[0]} the documents` }
-    : undefined;
-  return { send, alsoText };
+  const drafts = allDraftsFor(created, me, licenses, await appOrigin(), preApproved).filter((d) => d.method !== "app");
+  return { drafts, preferred: created.otherAgent.contact.methods, agentFirst: created.otherAgent.name.split(" ")[0] };
 }
 
 // ---------- Requester edits the request ----------

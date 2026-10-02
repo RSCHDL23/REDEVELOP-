@@ -38,6 +38,19 @@ export function upcomingAnniversaries<T extends { closedOn: ISODate | null; reme
 
 const ordinal = (n: number) => `${n}${["th", "st", "nd", "rd"][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10 < 4 ? n % 10 : 0]}`;
 
-export function anniversaryMessage(o: { clientFirst: string; years: number; agentName: string; agentPhone: string }): string {
-  return `Happy ${ordinal(o.years)} home anniversary, ${o.clientFirst}! 🏡🎉 It feels like yesterday we got the keys. I hope your home is full of great memories. If you ever need a contractor, a home value update or have friends thinking of moving, I'm always here. ${o.agentName} ${o.agentPhone}`;
+// Several messages so a client never gets the same one two years in a row.
+const TEMPLATES = [
+  (o: Msg) => `Happy ${ordinal(o.years)} home anniversary, ${o.clientFirst}! 🏡🎉 It feels like yesterday we got the keys. I hope your home is full of great memories. If you ever need a contractor, a home value update or have friends thinking of moving, I'm always here. ${o.agentName} ${o.agentPhone}`,
+  (o: Msg) => `${o.clientFirst}, ${o.years === 1 ? "one whole year" : `${o.years} years`} in your home today! 🎉 Wishing you many more great years there. Curious what it's worth now? I'm happy to run a free market update anytime. ${o.agentName} ${o.agentPhone}`,
+  (o: Msg) => `Happy home-iversary, ${o.clientFirst}! 🔑 ${o.years} year${o.years > 1 ? "s" : ""} ago today you got the keys. Thank you again for trusting me. If anyone you know is buying or selling, I'd love to help them too. ${o.agentName}`,
+  (o: Msg) => `Cheers to ${o.years} year${o.years > 1 ? "s" : ""} in your home, ${o.clientFirst}! 🥂 A quick reminder: check that your homestead exemption is still on your tax bill, and test your smoke detectors. Here if you need anything. ${o.agentName} ${o.agentPhone}`,
+  (o: Msg) => `${o.clientFirst}, it's your ${ordinal(o.years)} home anniversary! 🏡 I hope the house is treating you well. Need a trusted plumber, roofer or painter? Just text me and I'll send you my list. ${o.agentName} ${o.agentPhone}`,
+];
+type Msg = { clientFirst: string; years: number; agentName: string; agentPhone: string; seed?: string };
+
+/** The anniversary text, changing every year for the same client. */
+export function anniversaryMessage(o: Msg): string {
+  let h = 0;
+  for (const ch of o.seed ?? o.clientFirst) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return TEMPLATES[(h + o.years) % TEMPLATES.length](o);
 }

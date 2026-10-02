@@ -12,8 +12,6 @@ import { ProgramPanel } from "./ProgramPanel";
 import { agreementFor, agreementHeadsUp, ESIGN_PROVIDERS } from "@/lib/core/agreements";
 import { buyerDosAndDonts, sellerDosAndDonts } from "@/lib/core/clientTips";
 import { greetingName } from "@/lib/core/closing";
-import { SITE_NAMES } from "@/lib/core/listingLinks";
-import { markSeen } from "../homes/share/actions";
 import { moveClient } from "./actions";
 
 export const metadata: Metadata = { title: "Clients" };
@@ -30,8 +28,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   const { stage = "present" } = await searchParams;
   const current = STAGES.find((s) => s.id === stage) ?? STAGES[0];
   const r = repo();
-  const [clients, requests, deals, shares, me] = await Promise.all([r.listClients(), r.listRequests(), r.listDeals(), r.listHomeShares(), r.getMe()]);
-  const newShares = shares.filter((x) => !x.seen);
+  const [clients, requests, deals, me] = await Promise.all([r.listClients(), r.listRequests(), r.listDeals(), r.getMe()]);
   const provider = ESIGN_PROVIDERS.find((p) => p.id === me.esignProvider);
   const esign = { provider: provider?.label ?? null, url: me.esignUrl || provider?.url || "" };
   const today = todayISO();
@@ -56,32 +53,6 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
         ))}
       </nav>
       <p className="small muted" style={{ margin: 0 }}>{current.hint}</p>
-
-      {shares.length > 0 && (
-        <section className="stack" id="shared">
-          <h2 className="section-label">Homes your clients sent {newShares.length > 0 && <span className="pill solid">{newShares.length} new</span>}</h2>
-          {shares.slice(0, 6).map((h) => {
-            const client = clients.find((c) => h.clientName.startsWith(c.name));
-            return (
-              <article key={h.id} className={`card ${h.seen ? "" : "accent"}`}>
-                <div className="between" style={{ alignItems: "flex-start" }}>
-                  <span className="stack" style={{ gap: 1 }}>
-                    <span className="strong">{h.address || "Home link"}</span>
-                    <span className="small muted">From {h.clientName} · {SITE_NAMES[h.source]}{h.wantsTour ? " · wants to see it" : ""}</span>
-                  </span>
-                  {!h.seen && <span className="pill blue">New</span>}
-                </div>
-                {h.note && <span className="small">&ldquo;{h.note}&rdquo;</span>}
-                <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
-                  <a className="btn" href={h.url} target="_blank" rel="noreferrer">Open on {SITE_NAMES[h.source]}</a>
-                  <Link className="btn primary" href={`/showings/new?address=${encodeURIComponent(h.address)}${client ? `&client=${client.id}` : ""}`}>Request showing</Link>
-                  {!h.seen && <form action={markSeen}><input type="hidden" name="id" value={h.id} /><button className="btn">Mark seen</button></form>}
-                </div>
-              </article>
-            );
-          })}
-        </section>
-      )}
 
       <AddClient stage={current.id} agentName={me.fullName} agentPhone={me.phone} esign={esign} />
 

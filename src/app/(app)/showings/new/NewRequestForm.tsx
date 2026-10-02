@@ -6,6 +6,7 @@ import { LengthSelect, TimeSelect } from "@/components/TimeFields";
 import { createRequest, type NewRequestState } from "../actions";
 import { HomeSnapshot } from "@/components/HomeSnapshot";
 import { AttachDocs } from "@/components/AttachDocs";
+import { MultiSend } from "@/components/MultiSend";
 import type { Attachment } from "@/lib/data/types";
 
 type Home = { id: string; address: string; city: string; photoUrl: string | null; source: string; agent: string; preferred: string; methods: string[]; minutes: number; instant: boolean; beds: number; baths: number; sqft: number | null; price: number | null };
@@ -48,14 +49,12 @@ export function NewRequestForm({ homes, clients, defaultListing, defaultClient, 
     setOpen(false);
   }
 
-  if (state.send) {
+  if (state.drafts) {
     return (
       <section className="card status-card status-pending" aria-live="polite">
         <span className="strong" style={{ fontSize: 18 }}>Request saved</span>
-        <span className="small">This listing agent isn&apos;t on REschedule yet, so send it from your phone. It&apos;s written for you:</span>
-        <p className="small" style={{ margin: 0, whiteSpace: "pre-wrap", background: "#fff", padding: 10, borderRadius: 10 }}>{state.send.body}</p>
-        {state.send.href && <a className="btn primary lg block" href={state.send.href}>{state.send.label}</a>}
-        {state.alsoText && <a className="btn block" style={{ background: "#fff" }} href={state.alsoText.href}>📎 {state.alsoText.label}</a>}
+        <span className="small">{state.agentFirst ?? "This agent"} isn&apos;t on REschedule yet. Send it any way you like: pick text, email, call or their scheduler, edit the message if you want, then tap send. Nothing goes out until you do.</span>
+        <MultiSend drafts={state.drafts} preferred={state.preferred} />
         <Link href="/showings?tab=sent" className="btn block" style={{ background: "#fff" }}>Done</Link>
       </section>
     );
