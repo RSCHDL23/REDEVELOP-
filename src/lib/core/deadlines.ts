@@ -114,3 +114,50 @@ export function contractMilestones(t: ContractTerms): Milestone[] {
 export function daysUntil(from: ISODate, to: ISODate): number {
   return Math.round((parse(to).getTime() - parse(from).getTime()) / 86400000);
 }
+
+export interface HolidayInfo {
+  /** The day it's observed for federal offices (and for business-day counting). */
+  date: ISODate;
+  name: string;
+  /** The calendar date, if different (e.g. July 4 on a Saturday is observed Friday July 3). */
+  actual?: ISODate;
+  /** Federal Reserve banks close. They don't close on a Friday for a Saturday holiday. */
+  banksClosed: boolean;
+}
+
+/** Federal holidays with names, plus whether Federal Reserve banks are closed that day. */
+export function holidaysWithNames(year: number): HolidayInfo[] {
+  const fixed: [number, number, string][] = [
+    [0, 1, "New Year's Day"],
+    [5, 19, "Juneteenth"],
+    [6, 4, "Independence Day"],
+    [10, 11, "Veterans Day"],
+    [11, 25, "Christmas Day"],
+  ];
+  const out: HolidayInfo[] = fixed.map(([m, d, name]) => {
+    const actual = new Date(Date.UTC(year, m, d));
+    const obs = observed(actual);
+    const moved = obs.getTime() !== actual.getTime();
+    // Banks: Sunday holidays move to Monday; Saturday holidays aren't moved (banks stay open Friday).
+    const banksClosed = actual.getUTCDay() !== 6;
+    return { date: fmt(obs), name: moved ? `${name} (observed)` : name, actual: moved ? fmt(actual) : undefined, banksClosed };
+  });
+  const floating: [Date, string][] = [
+    [nthWeekday(year, 0, 1, 3), "Martin Luther King Jr. Day"],
+    [nthWeekday(year, 1, 1, 3), "Washington's Birthday (Presidents' Day)"],
+    [lastWeekday(year, 4, 1), "Memorial Day"],
+    [nthWeekday(year, 8, 1, 1), "Labor Day"],
+    [nthWeekday(year, 9, 1, 2), "Columbus Day / Indigenous Peoples' Day"],
+    [nthWeekday(year, 10, 4, 4), "Thanksgiving Day"],
+  ];
+  out.push(...floating.map(([d, name]) => ({ date: fmt(d), name, banksClosed: true })));
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Banking day: a weekday when Federal Reserve banks are open. */
+export function isBankingDay(d: ISODate): boolean {
+  const day = parse(d).getUTCDay();
+  if (day === 0 || day === 6) return false;
+  const year = Number(d.slice(0, 4));
+  return !holidaysWithNames(year).some((h) => h.date === d && h.banksClosed);
+}

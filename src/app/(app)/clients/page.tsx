@@ -31,7 +31,10 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
     <main className="page">
       <header className="between">
         <h1 className="page-title">Clients</h1>
-        <Link href="/profile#my-link" className="btn">My link &amp; QR</Link>
+        <div className="row" style={{ gap: 6 }}>
+          <Link href="/remember" className="btn">REmember</Link>
+          <Link href="/profile#my-link" className="btn">My link &amp; QR</Link>
+        </div>
       </header>
 
       <nav className="grid-3" aria-label="Client lists">
@@ -66,12 +69,13 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
               {c.source === "link" && <span className="pill blue">From your link</span>}
             </div>
 
-            {(upcoming.length > 0 || deal) && (
+            {(upcoming.length > 0 || deal || c.closedOn) && (
               <ul className="stack small" style={{ listStyle: "none", margin: 0, padding: 0, gap: 4 }}>
                 {upcoming.slice(0, 3).map((x) => (
                   <li key={x.id}>🏠 {x.address} · <span className="tabular">{prettyDate(dateOf(x.startsAt))} {formatClock(minutesOfDay(x.startsAt))}</span></li>
                 ))}
                 {deal && <li>📄 <Link href={`/deals/${deal.id}`}>{deal.address}</Link> · closing {prettyDate(deal.closingDate)}</li>}
+                {c.closedOn && <li>🎉 Home anniversary {prettyDate(c.closedOn, { month: "long", day: "numeric" })} · <Link href="/remember">REmember</Link></li>}
               </ul>
             )}
 

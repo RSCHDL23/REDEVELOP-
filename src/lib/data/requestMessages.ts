@@ -2,7 +2,7 @@
 import { deviceLink, nudgeDraft, type Draft, type RequestDetails, type Sender } from "@/lib/core/messages";
 import { formatClock } from "@/lib/core/time";
 import { dateOf, minutesOfDay, prettyDate } from "./dates";
-import type { License, MapApp, Profile, ShowingRequest } from "./types";
+import type { Client, License, MapApp, Profile, ShowingRequest } from "./types";
 
 const AGENT_LICENSES = new Set(["real_estate_broker", "managing_broker"]);
 
@@ -28,7 +28,10 @@ export function detailsFor(r: ShowingRequest, preApproved = true): RequestDetail
 }
 
 export const senderFrom = (me: Profile, licenses: License[] = [], state?: string): Sender => ({
-  name: me.fullName, brokerage: me.brokerage, phone: me.phone, email: me.email, licenseId: licenseIdFor(licenses, state),
+  name: me.fullName, brokerage: me.brokerage, phone: me.phone, email: me.email,
+  // The agent chooses: license number, MLS agent ID, or both.
+  licenseId: me.idInMessages === "mls_id" && me.mlsAgentId ? undefined : licenseIdFor(licenses, state),
+  mlsId: me.idInMessages !== "license" && me.mlsAgentId ? me.mlsAgentId : undefined,
 });
 
 const contactOf = (r: ShowingRequest, onApp = r.otherAgent.onApp) => {
@@ -72,4 +75,27 @@ export function directionsLink(app: MapApp, address: string): string {
   if (app === "apple") return `https://maps.apple.com/?daddr=${q}`;
   if (app === "waze") return `https://waze.com/ul?q=${q}&navigate=yes`;
   return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
+}
+
+/** "Running late" texts with your new arrival time. */
+export function lateText(r: ShowingRequest, me: Profile, etaLabel: string, to: "listing" | "party") {
+  const agentFirst = r.otherAgent.name.split(" ")[0] || "there";
+  return to === "listing"
+    ? `Hi ${agentFirst}, ${me.fullName} here. I'm running a few minutes behind for ${r.address}. New ETA ${etaLabel}. Please let the owners know. Sorry about that!`
+    : `Hi! I'm running a few minutes behind. I'll be at ${r.address} by about ${etaLabel}. ${me.fullName}`;
+}
+
+/** Today's confirmed showings, shaped for leave-on-time and running-late alerts. */
+export function tripsFor(requests: ShowingRequest[], clients: Client[], me: Profile, day: string) {
+  return requests
+    .filter((r) => r.direction === "sent" && r.status === "approved" && dateOf(r.startsAt) === day)
+    .map((r) => {
+      const client = clients.find((c) => c.id === r.clientId) ?? clients.find((c) => c.name === r.buyerLabel);
+      return {
+        id: r.id, address: r.address, startsAt: r.startsAt, lat: r.home.lat ?? null, lng: r.home.lng ?? null, arrived: !!r.arrivedAt,
+        listingFirst: r.otherAgent.name.split(" ")[0] || "the listing agent", listingOnApp: r.otherAgent.onApp, listingPhone: r.otherAgent.phone,
+        listingText: lateText(r, me, "{ETA}", "listing"),
+        partyName: client?.name ?? r.buyerLabel, partyPhone: client?.phone ?? "", partyText: lateText(r, me, "{ETA}", "party"),
+      };
+    });
 }

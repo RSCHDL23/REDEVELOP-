@@ -18,6 +18,22 @@ export interface Profile {
   slug: string;
   websites: Website[];
   mapApp: MapApp;
+  /** MLS agent ID, shown in requests if chosen. */
+  mlsAgentId: string;
+  /** What to put in showing requests: license number, MLS agent ID, or both. */
+  idInMessages: "license" | "mls_id" | "both";
+  home: Place | null;
+  office: Place | null;
+  /** Zillow, Google, Realtor.com… where clients can leave reviews. */
+  reviewLinks: Website[];
+  rememberAuto: boolean;
+  rememberChannel: "text" | "email";
+}
+
+export interface Place {
+  address: string;
+  lat: number | null;
+  lng: number | null;
 }
 
 export type MapApp = "google" | "apple" | "waze";
@@ -97,6 +113,18 @@ export interface Client {
   intent: string;
   notes: string;
   createdAt: string;
+  /** Closing date of their home, for REmember anniversaries. */
+  closedOn: string | null;
+  remember: boolean;
+  reviewToken: string;
+  reviewRequestedAt: string | null;
+}
+
+export interface ClientReview {
+  name: string;
+  stars: number;
+  body: string;
+  at: string;
 }
 
 /** What pops up when you tap an address. */
@@ -107,6 +135,9 @@ export interface HomeSnapshot {
   beds: number | null;
   baths: number | null;
   sqft: number | null;
+  /** Map position, when known (for drive times and leave-now alerts). */
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface ShowingFeedback {
@@ -141,6 +172,8 @@ export interface ShowingRequest {
   reminderCount: number;
   comments: string;
   arrivedAt: string | null;
+  /** Requester said they're running late; when they expect to arrive. */
+  lateEta: string | null;
   feedback: ShowingFeedback | null;
   clientId: string | null;
   home: HomeSnapshot;

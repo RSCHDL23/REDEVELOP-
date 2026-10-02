@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { repo } from "@/lib/data";
 import { dateOf, minutesOfDay, prettyDate } from "@/lib/data/dates";
-import { arrivalTexts, directionsLink, MAP_APPS, smsLink } from "@/lib/data/requestMessages";
+import { arrivalTexts, directionsLink, MAP_APPS, smsLink, tripsFor } from "@/lib/data/requestMessages";
+import { TripAlerts } from "@/components/TripAlerts";
 import { formatClock } from "@/lib/core/time";
 import { BackLink } from "@/components/ui";
 import { HomeSnapshot } from "@/components/HomeSnapshot";
@@ -40,6 +41,8 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
         </div>
         <a className="btn block" style={{ background: "#fff" }} href={directionsLink(preferred.id, fullAddress(visit.home))} target="_blank" rel="noreferrer">Directions in {preferred.label}</a>
       </section>
+
+      {!visit.arrivedAt && <TripAlerts compact trips={tripsFor([visit], clients, me, day)} />}
 
       <VisitFlow
         id={visit.id}

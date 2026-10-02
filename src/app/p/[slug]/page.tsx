@@ -63,6 +63,21 @@ export default async function PublicProfilePage({ params }: Props) {
           </section>
         )}
 
+        {p.reviews.length > 0 && (
+          <section className="stack">
+            <h2 className="section-label">
+              Reviews · {"★".repeat(Math.round(p.reviews.reduce((a, x) => a + x.stars, 0) / p.reviews.length))} {(p.reviews.reduce((a, x) => a + x.stars, 0) / p.reviews.length).toFixed(1)}
+            </h2>
+            {p.reviews.slice(0, 6).map((x) => (
+              <figure key={x.at} className="card" style={{ margin: 0, gap: 4 }}>
+                <span style={{ color: "#e1a800" }} aria-label={`${x.stars} stars`}>{"★".repeat(x.stars)}</span>
+                {x.body && <blockquote style={{ margin: 0 }}>{x.body}</blockquote>}
+                <figcaption className="small muted">{x.name}</figcaption>
+              </figure>
+            ))}
+          </section>
+        )}
+
         <ConnectForm slug={p.slug} firstName={first} />
 
         <p className="tiny muted" style={{ textAlign: "center" }}>

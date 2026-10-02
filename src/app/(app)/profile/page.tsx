@@ -9,7 +9,7 @@ import { ImageUpload } from "./ImageUpload";
 import QRCode from "qrcode";
 import { appOrigin } from "@/lib/server/origin";
 import { MAP_APPS } from "@/lib/data/requestMessages";
-import { ContactForm, DetailsForm, LicenseForm, WebsitesForm } from "./Forms";
+import { ContactForm, DetailsForm, IdChoiceForm, LicenseForm, StartPlacesForm, WebsitesForm } from "./Forms";
 import { LinkShare } from "./LinkShare";
 import { MfaSetup } from "./MfaSetup";
 import { removeLicense, removeWork, saveMapApp } from "./actions";
@@ -41,7 +41,8 @@ const LICENSE_STATUS = {
 
 export default async function ProfilePage() {
   const r = repo();
-  const [me, licenses, pref, work] = await Promise.all([r.getMe(), r.listLicenses(), r.getContactPreference(), r.listPortfolio()]);
+  const [me, licenses, pref, work, reviews] = await Promise.all([r.getMe(), r.listLicenses(), r.getContactPreference(), r.listPortfolio(), r.listMyReviews()]);
+  const avg = reviews.length ? reviews.reduce((a, x) => a + x.stars, 0) / reviews.length : 0;
   const roles = rolesFor(licenses, me.selfRoles);
   const isPro = licenses.length > 0 || roles.some((x) => !CLIENT_ROLES.includes(x));
   const access = effectiveAccess(roles);
@@ -156,8 +157,21 @@ export default async function ProfilePage() {
 
       {isPro && (
         <section className="stack">
+          <h2 className="section-label">Reviews</h2>
+          <div className="card" style={{ gap: 6 }}>
+            <span className="strong">{reviews.length ? `${"★".repeat(Math.round(avg))} ${avg.toFixed(1)} · ${reviews.length} review${reviews.length > 1 ? "s" : ""}` : "No reviews yet"}</span>
+            {reviews.slice(0, 3).map((x) => <span key={x.at} className="small">&ldquo;{x.body}&rdquo; <span className="muted">· {x.name}</span></span>)}
+            <span className="tiny muted">Clients get a private review link when you close. Reviews show on your public page.</span>
+          </div>
+          <WebsitesForm websites={me.reviewLinks} kind="reviews" />
+        </section>
+      )}
+
+      {isPro && (
+        <section className="stack">
           <h2 className="section-label">Showing requests</h2>
           <ContactForm pref={pref} />
+          <IdChoiceForm mlsAgentId={me.mlsAgentId} idInMessages={me.idInMessages} />
         </section>
       )}
 
@@ -167,6 +181,7 @@ export default async function ProfilePage() {
           <span className="stack" style={{ gap: 0 }}><span className="strong">Weekly hours</span><span className="tiny muted">When you can show homes or meet</span></span>
           <span aria-hidden="true">›</span>
         </Link>
+        <StartPlacesForm home={me.home} office={me.office} />
         <form action={saveMapApp} className="card">
           <label htmlFor="mapApp" className="strong">Directions open in</label>
           <span className="tiny muted">Used for &ldquo;next showing&rdquo; directions after you leave feedback.</span>

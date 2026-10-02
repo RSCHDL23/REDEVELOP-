@@ -56,3 +56,15 @@ export function checklistMessage(opts: { clientFirstName: string; address: strin
     `${opts.agentName} · ${opts.agentPhone}`,
   ].join("\n");
 }
+
+/** Asks a client for a review: the in-app link first, then the agent's chosen review sites. */
+export function reviewRequestMessage(o: { clientFirst: string; agentName: string; reviewUrl: string; sites: { label: string; url: string }[] }): string {
+  return [
+    `Hi ${o.clientFirst}! It was a joy helping you. Would you take a minute to share how it went? It helps other families find me.`,
+    "",
+    `Leave a review here: ${o.reviewUrl}`,
+    ...(o.sites.length ? ["", "Or on:", ...o.sites.map((s) => `${s.label}: ${s.url}`)] : []),
+    "",
+    `Thank you so much! ${o.agentName}`,
+  ].join("\n");
+}

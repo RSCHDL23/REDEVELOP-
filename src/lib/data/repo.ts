@@ -1,6 +1,6 @@
 import type { Profession } from "@/lib/core/access";
 import type { ContactMethod } from "@/lib/core/messages";
-import type { Client, ClientStage, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, RequestStatus, ShowingFeedback, ShowingRequest, TourContext, WeeklyHours } from "./types";
+import type { Client, ClientReview, ClientStage, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, RequestStatus, ShowingFeedback, ShowingRequest, TourContext, WeeklyHours } from "./types";
 
 export interface NewRequest {
   /** A home in the system, or a typed-in home with its listing agent. */
@@ -41,12 +41,13 @@ export interface PublicProfile {
   brokerage: string;
   websites: { label: string; url: string }[];
   licenses: { profession: Profession; state: string; number: string }[];
+  reviews: ClientReview[];
 }
 
 /** Everything the screens need. Implemented by the demo store and by Supabase. */
 export interface Repo {
   getMe(): Promise<Profile>;
-  updateMe(patch: Partial<Pick<Profile, "fullName" | "phone" | "tagline" | "bio" | "brokerage" | "headshotUrl" | "logoUrl" | "selfRoles" | "websites" | "mapApp">>): Promise<void>;
+  updateMe(patch: Partial<Pick<Profile, "fullName" | "phone" | "tagline" | "bio" | "brokerage" | "headshotUrl" | "logoUrl" | "selfRoles" | "websites" | "mapApp" | "mlsAgentId" | "idInMessages" | "home" | "office" | "reviewLinks" | "rememberAuto" | "rememberChannel">>): Promise<void>;
 
   getContactPreference(): Promise<ContactPreference>;
   saveContactPreference(pref: ContactPreference): Promise<void>;
@@ -73,6 +74,10 @@ export interface Repo {
   recordAnswer(id: string, status: RequestStatus): Promise<void>;
   createRequest(input: NewRequest): Promise<ShowingRequest>;
 
+  /** Requester changes the date/time (or comments). A new time goes back to Pending. */
+  editRequest(id: string, input: { startsAt: string; endsAt: string; comments: string }): Promise<void>;
+  /** Requester is running late. */
+  setLateEta(id: string, eta: string): Promise<void>;
   /** Requester is at the home. */
   markArrived(id: string): Promise<void>;
   submitFeedback(id: string, feedback: ShowingFeedback): Promise<void>;
@@ -80,6 +85,12 @@ export interface Repo {
   listClients(): Promise<Client[]>;
   addClient(input: Pick<Client, "name" | "phone" | "email" | "preApproved"> & Partial<Pick<Client, "stage" | "notes" | "intent">>): Promise<Client>;
   setClientStage(id: string, stage: ClientStage): Promise<void>;
+  updateClient(id: string, patch: Partial<Pick<Client, "closedOn" | "remember" | "notes" | "phone" | "email">>): Promise<void>;
+  markReviewRequested(clientId: string): Promise<void>;
+  listMyReviews(): Promise<ClientReview[]>;
+  /** Review page from a client's private link (no account needed). */
+  getReviewTarget(token: string): Promise<{ agentName: string; slug: string; clientFirst: string; already: boolean; reviewLinks: { label: string; url: string }[] } | null>;
+  submitReview(token: string, input: { name: string; stars: number; body: string }): Promise<void>;
 
   /** Personal link: works without signing in. */
   getPublicProfile(slug: string): Promise<PublicProfile | null>;

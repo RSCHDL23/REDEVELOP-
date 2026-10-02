@@ -49,7 +49,7 @@ function toListing(r: Row): Listing {
 
 const AGENT_FIELDS = "id, full_name, phone, email, brokerages(name), contact_preferences(*)";
 const LISTING_SELECT = `*, agent:profiles!listings_listing_agent_id_fkey(${AGENT_FIELDS})`;
-const REQUEST_SELECT = `*, feedback:showing_feedback(*), listing:listings(address, city, state, beds, baths, sqft, photo_url, listing_agent_id, agent:profiles!listings_listing_agent_id_fkey(${AGENT_FIELDS})), requester:profiles!showing_requests_requesting_agent_id_fkey(${AGENT_FIELDS})`;
+const REQUEST_SELECT = `*, feedback:showing_feedback(*), listing:listings(address, city, state, beds, baths, sqft, lat, lng, photo_url, listing_agent_id, agent:profiles!listings_listing_agent_id_fkey(${AGENT_FIELDS})), requester:profiles!showing_requests_requesting_agent_id_fkey(${AGENT_FIELDS})`;
 
 function toRequest(r: Row, uid: string): ShowingRequest {
   const sent = r.requesting_agent_id === uid;
@@ -65,11 +65,12 @@ function toRequest(r: Row, uid: string): ShowingRequest {
     startsAt: r.starts_at, endsAt: r.ends_at, status: r.status, direction: sent ? "sent" : "incoming",
     proposedStartsAt: r.proposed_starts_at, proposedEndsAt: r.proposed_ends_at, responseNote: r.response_note ?? "",
     remindedAt: r.reminded_at, reminderCount: Number(r.reminder_count ?? 0),
-    comments: r.comments ?? "", arrivedAt: r.arrived_at ?? null, clientId: r.client_id ?? null,
+    comments: r.comments ?? "", arrivedAt: r.arrived_at ?? null, lateEta: r.late_eta ?? null, clientId: r.client_id ?? null,
     feedback: toFeedback(Array.isArray(r.feedback) ? r.feedback[0] : r.feedback),
     home: {
       address: r.listing?.address ?? r.manual_address ?? "", city: r.listing ? `${r.listing.city}, ${r.listing.state}` : "",
       photoUrl: r.listing?.photo_url ?? null, beds: r.listing?.beds ?? null, baths: r.listing?.baths ?? null, sqft: r.listing?.sqft ?? null,
+      lat: r.listing?.lat ?? null, lng: r.listing?.lng ?? null,
     },
   };
 }
@@ -83,6 +84,7 @@ function toClient(r: Row): Client {
   return {
     id: r.id, name: r.name, phone: r.phone ?? "", email: r.email ?? "", preApproved: r.pre_approved,
     stage: r.stage ?? "present", source: r.source ?? "manual", intent: r.intent ?? "", notes: r.notes ?? "", createdAt: r.created_at,
+    closedOn: r.closed_on ?? null, remember: r.remember ?? true, reviewToken: r.review_token, reviewRequestedAt: r.review_requested_at ?? null,
   };
 }
 
@@ -95,6 +97,10 @@ export const supabaseRepo: Repo = {
       headshotUrl: publicUrl(supabase, "avatars", p.headshot_path), logoUrl: publicUrl(supabase, "logos", p.logo_path),
       brokerage: p.brokerages?.name ?? "", serviceAreas: p.service_areas ?? [], selfRoles: p.self_roles ?? [],
       slug: p.slug ?? "", websites: Array.isArray(p.websites) ? p.websites : [], mapApp: p.map_app ?? "google",
+      mlsAgentId: p.mls_agent_id ?? "", idInMessages: p.id_in_messages ?? "license",
+      home: p.home_address ? { address: p.home_address, lat: p.home_lat, lng: p.home_lng } : null,
+      office: p.office_address ? { address: p.office_address, lat: p.office_lat, lng: p.office_lng } : null,
+      reviewLinks: Array.isArray(p.review_links) ? p.review_links : [], rememberAuto: p.remember_auto ?? true, rememberChannel: p.remember_channel ?? "text",
     } satisfies Profile;
   },
   async updateMe(patch) {
@@ -107,6 +113,13 @@ export const supabaseRepo: Repo = {
     if (patch.selfRoles !== undefined) row.self_roles = patch.selfRoles;
     if (patch.websites !== undefined) row.websites = patch.websites.slice(0, 8);
     if (patch.mapApp !== undefined) row.map_app = patch.mapApp;
+    if (patch.mlsAgentId !== undefined) row.mls_agent_id = patch.mlsAgentId || null;
+    if (patch.idInMessages !== undefined) row.id_in_messages = patch.idInMessages;
+    if (patch.home !== undefined) Object.assign(row, { home_address: patch.home?.address ?? null, home_lat: patch.home?.lat ?? null, home_lng: patch.home?.lng ?? null });
+    if (patch.office !== undefined) Object.assign(row, { office_address: patch.office?.address ?? null, office_lat: patch.office?.lat ?? null, office_lng: patch.office?.lng ?? null });
+    if (patch.reviewLinks !== undefined) row.review_links = patch.reviewLinks.slice(0, 8);
+    if (patch.rememberAuto !== undefined) row.remember_auto = patch.rememberAuto;
+    if (patch.rememberChannel !== undefined) row.remember_channel = patch.rememberChannel;
     // For uploads, headshotUrl and logoUrl carry the storage path of the new file.
     if (patch.headshotUrl !== undefined) row.headshot_path = patch.headshotUrl;
     if (patch.logoUrl !== undefined) row.logo_path = patch.logoUrl;
@@ -245,7 +258,57 @@ export const supabaseRepo: Repo = {
       slug: p.slug, fullName: p.full_name, tagline: p.tagline ?? "", bio: p.bio ?? "", phone: p.phone ?? "", email: p.email ?? "",
       headshotUrl: publicUrl(supabase, "avatars", p.headshot_path), logoUrl: publicUrl(supabase, "logos", p.logo_path),
       brokerage: p.brokerage ?? "", websites: p.websites ?? [], licenses: p.licenses ?? [],
+      reviews: await (async () => {
+        const { data: rv } = await supabase.rpc("public_client_reviews", { p_slug: slug });
+        return ((rv as Row[] | null) ?? []).map((x) => ({ name: x.name, stars: x.stars, body: x.body ?? "", at: x.at }));
+      })(),
     } satisfies PublicProfile;
+  },
+  async editRequest(id, input) {
+    const { supabase } = await session();
+    const cur = check(await supabase.from("showing_requests").select("starts_at, ends_at").eq("id", id).single()) as Row;
+    const timeChanged = new Date(cur.starts_at).getTime() !== new Date(input.startsAt).getTime() || new Date(cur.ends_at).getTime() !== new Date(input.endsAt).getTime();
+    // A new time goes back to Pending; the database clears any suggested time.
+    check(await supabase.from("showing_requests").update({
+      starts_at: input.startsAt, ends_at: input.endsAt, comments: input.comments.slice(0, 500) || null,
+      ...(timeChanged ? { status: "pending" } : {}),
+    }).eq("id", id));
+  },
+  async setLateEta(id, eta) {
+    const { supabase } = await session();
+    check(await supabase.from("showing_requests").update({ late_eta: eta }).eq("id", id));
+  },
+  async updateClient(id, patch) {
+    const { supabase } = await session();
+    const row: Row = {};
+    if (patch.closedOn !== undefined) row.closed_on = patch.closedOn;
+    if (patch.remember !== undefined) row.remember = patch.remember;
+    if (patch.notes !== undefined) row.notes = patch.notes || null;
+    if (patch.phone !== undefined) row.phone = patch.phone || null;
+    if (patch.email !== undefined) row.email = patch.email || null;
+    check(await supabase.from("clients").update(row).eq("id", id));
+  },
+  async markReviewRequested(clientId) {
+    const { supabase } = await session();
+    check(await supabase.from("clients").update({ review_requested_at: new Date().toISOString() }).eq("id", clientId));
+  },
+  async listMyReviews() {
+    const { supabase, uid } = await session();
+    const rows = check(await supabase.from("client_reviews").select("*").eq("agent_id", uid).order("created_at", { ascending: false })) as Row[];
+    return rows.map((r) => ({ name: r.display_name, stars: r.stars, body: r.body ?? "", at: r.created_at }));
+  },
+  async getReviewTarget(token) {
+    if (!/^[0-9a-f-]{36}$/i.test(token)) return null;
+    const supabase = await createClient();
+    const { data } = await supabase.rpc("review_target", { p_token: token });
+    if (!data) return null;
+    const t = data as Row;
+    return { agentName: t.agent_name, slug: t.slug, clientFirst: t.client_first, already: !!t.already, reviewLinks: Array.isArray(t.review_links) ? t.review_links : [] };
+  },
+  async submitReview(token, input) {
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("submit_review", { p_token: token, p_name: input.name, p_stars: input.stars, p_body: input.body });
+    if (error) throw new Error(error.message);
   },
   async connectToPro(slug, input) {
     const supabase = await createClient();
@@ -342,7 +405,8 @@ export const supabaseRepo: Repo = {
     if (m.kind === "closing") {
       // Closing day: the client moves to Past (or back, if un-checked).
       const d = check(await supabase.from("deals").select("client_id").eq("id", dealId).single()) as Row;
-      if (d.client_id) await supabase.from("clients").update({ stage: m.done_at ? "present" : "past" }).eq("id", d.client_id);
+      const due = check(await supabase.from("milestones").select("due_date").eq("id", milestoneId).single()) as Row;
+      if (d.client_id) await supabase.from("clients").update({ stage: m.done_at ? "present" : "past", closed_on: m.done_at ? null : due.due_date }).eq("id", d.client_id);
     }
   },
   async postLoanUpdate(dealId, status, note) {

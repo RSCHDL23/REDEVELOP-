@@ -2,13 +2,13 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { TourContext } from "@/lib/data/types";
+import type { Place, TourContext } from "@/lib/data/types";
 import { planTour, type TourPlan } from "@/lib/core/optimizer";
 import { driveTable } from "@/lib/core/drive";
 import { formatClock, intersectAll, type Window } from "@/lib/core/time";
 import { deviceLink, draftsFor, type Draft, type Sender } from "@/lib/core/messages";
 import { prettyDate } from "@/lib/data/dates";
-import { sendTour, type SendTourState } from "./actions";
+import { findAddress, sendTour, type SendTourState } from "./actions";
 import { HomeSnapshot } from "@/components/HomeSnapshot";
 
 const LENGTHS = [15, 30, 45];
@@ -18,12 +18,47 @@ function windowsLabel(w: readonly Window[]) {
   return w.length ? w.map(([s, e]) => `${formatClock(s)}–${formatClock(e)}`).join(", ") : "Not free";
 }
 
-export function TourBuilder({ ctx, sender }: { ctx: TourContext; sender: Sender }) {
+type StartMode = "office" | "home" | "first" | "current" | "address";
+type Coords = { lat: number; lng: number };
+const hasCoords = (p: Place | null): p is Place & Coords => !!p && p.lat != null && p.lng != null;
+
+export function TourBuilder({ ctx, sender, places }: { ctx: TourContext; sender: Sender; places: { home: Place | null; office: Place | null } }) {
   const router = useRouter();
   const [picked, setPicked] = useState<Set<string>>(() => new Set(ctx.homes.map((h) => h.listing.id)));
   const [length, setLength] = useState(30);
   const [plan, setPlan] = useState<TourPlan | null>(null);
   const [comments, setComments] = useState("");
+  const [mode, setMode] = useState<StartMode>(hasCoords(places.office) ? "office" : hasCoords(places.home) ? "home" : "first");
+  const [current, setCurrent] = useState<Coords | null>(null);
+  const [typed, setTyped] = useState("");
+  const [typedAt, setTypedAt] = useState<(Coords & { address: string }) | null>(null);
+  const [startMsg, setStartMsg] = useState("");
+
+  const startPoint: { label: string; coords: Coords | null } =
+    mode === "office" ? { label: "your office", coords: hasCoords(places.office) ? places.office : null }
+    : mode === "home" ? { label: "home", coords: hasCoords(places.home) ? places.home : null }
+    : mode === "current" ? { label: "where you are", coords: current }
+    : mode === "address" ? { label: typedAt?.address ?? "that address", coords: typedAt }
+    : { label: "your first showing", coords: null };
+
+  function pickMode(m: StartMode) {
+    setMode(m); setPlan(null); setStartMsg("");
+    if (m === "current" && !current) {
+      if (!navigator.geolocation) { setStartMsg("Location isn't available on this device."); return; }
+      setStartMsg("Finding you…");
+      navigator.geolocation.getCurrentPosition(
+        (p) => { setCurrent({ lat: p.coords.latitude, lng: p.coords.longitude }); setStartMsg(""); },
+        () => setStartMsg("Allow location access to start from where you are."),
+        { enableHighAccuracy: false, timeout: 10000 },
+      );
+    }
+  }
+
+  async function lookUp() {
+    setStartMsg("Looking up…");
+    const res = await findAddress(typed);
+    if ("error" in res) { setStartMsg(res.error); setTypedAt(null); } else { setTypedAt(res); setStartMsg(`Starting from ${res.address}`); setPlan(null); }
+  }
   const [state, action, sending] = useActionState<SendTourState, FormData>(sendTour, {});
 
   const party = useMemo(() => intersectAll(ctx.participants.map((p) => p.free)), [ctx]);
@@ -40,12 +75,16 @@ export function TourBuilder({ ctx, sender }: { ctx: TourContext; sender: Sender 
 
   function build() {
     const homes = ctx.homes.filter((h) => picked.has(h.listing.id));
-    const points: Record<string, { lat: number; lng: number }> = { start: ctx.start };
+    if (mode !== "first" && !startPoint.coords) { setStartMsg("Pick a starting point first."); return; }
+    const points: Record<string, { lat: number; lng: number }> = { start: startPoint.coords ?? homes[0]?.listing ?? ctx.start };
     for (const h of homes) points[h.listing.id] = h.listing;
+    const drive = driveTable(points);
+    // "Start at first showing": no drive to the first stop.
+    if (mode === "first") for (const h of homes) drive.start[h.listing.id] = 0;
     setPlan(planTour({
       homes: homes.map((h) => ({ id: h.listing.id, free: h.free })),
       party,
-      drive: driveTable(points),
+      drive,
       start: "start",
       departAfter: party[0]?.[0] ?? 9 * 60,
       showingMinutes: length,
@@ -101,6 +140,29 @@ export function TourBuilder({ ctx, sender }: { ctx: TourContext; sender: Sender 
       </section>
 
       <section className="stack">
+        <h2 className="section-label">Start from</h2>
+        <div className="chips" role="group" aria-label="Starting point">
+          {([
+            ["office", "Office", hasCoords(places.office)],
+            ["home", "Home", hasCoords(places.home)],
+            ["first", "First showing", true],
+            ["current", "Where I am", true],
+            ["address", "Other address", true],
+          ] as [StartMode, string, boolean][]).map(([id, label, ok]) => (
+            <button key={id} type="button" className="chip" aria-pressed={mode === id} onClick={() => pickMode(id)} disabled={!ok} title={ok ? undefined : "Add this address in Profile"}>{label}</button>
+          ))}
+        </div>
+        {mode === "address" && (
+          <div className="row">
+            <input className="input" aria-label="Starting address" placeholder="Street, city, state" value={typed} onChange={(e) => setTyped(e.target.value)} maxLength={200} style={{ flex: 1 }} />
+            <button type="button" className="btn dark" onClick={lookUp} disabled={typed.trim().length < 5}>Set</button>
+          </div>
+        )}
+        {(!hasCoords(places.office) || !hasCoords(places.home)) && <span className="tiny muted">Add your home and office addresses in Profile to start from them.</span>}
+        {startMsg && <span className="small" role="status">{startMsg}</span>}
+      </section>
+
+      <section className="stack">
         <h2 className="section-label">Time at each home</h2>
         <div className="chips">
           {LENGTHS.map((m) => (
@@ -126,7 +188,11 @@ export function TourBuilder({ ctx, sender }: { ctx: TourContext; sender: Sender 
               {plan.stops.length} of {picked.size} homes · {dayLabel}
             </span>
             <span className="small muted tabular">
-              {plan.leaveAt !== null ? `Leave ${ctx.start.label.toLowerCase()} at ${formatClock(plan.leaveAt)} · done by ${formatClock(plan.end)} · ${plan.driveTotal} min driving` : "No times work for everyone on this date. Try another day."}
+              {plan.leaveAt !== null
+                ? mode === "first"
+                  ? `Meet at the first home at ${formatClock(plan.stops[0].start)} · done by ${formatClock(plan.end)} · ${plan.driveTotal} min driving`
+                  : `Leave ${startPoint.label} at ${formatClock(plan.leaveAt)} · done by ${formatClock(plan.end)} · ${plan.driveTotal} min driving`
+                : "No times work for everyone on this date. Try another day."}
             </span>
           </div>
 
@@ -169,11 +235,11 @@ export function TourBuilder({ ctx, sender }: { ctx: TourContext; sender: Sender 
                   }),
                 })}
               />
-              <button className="btn dark lg block" disabled={sending}>{sending ? "Saving…" : `Save all ${plan.stops.length} requests`}</button>
+              <button className="btn dark lg block" disabled={sending}>{sending ? "Sending…" : `Send all ${plan.stops.length} requests`}</button>
               <p className="tiny muted" style={{ textAlign: "center" }}>In-app requests go out right away. Use each card to send texts and emails from your phone.</p>
             </form>
           )}
-          {state.sent && <p className="notice">Saved {state.sent} showing requests. Track them under Showings → I requested.</p>}
+          {state.sent && <p className="notice">Sent {state.sent} showing requests. Track them under Showings → I requested.</p>}
           {state.error && <p className="error" role="alert">{state.error}</p>}
         </section>
       )}

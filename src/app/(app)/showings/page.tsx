@@ -12,18 +12,18 @@ import { IncomingResponse, SentActions } from "./Responses";
 export const metadata: Metadata = { title: "Showings" };
 
 const STATUS: Record<RequestStatus, { label: string; icon: string }> = {
-  pending: { label: "Waiting", icon: "…" },
+  pending: { label: "Pending", icon: "…" },
   approved: { label: "Confirmed", icon: "✓" },
-  countered: { label: "New time suggested", icon: "↻" },
-  declined: { label: "Declined", icon: "✕" },
+  countered: { label: "New time proposed", icon: "↻" },
+  declined: { label: "Denied", icon: "✕" },
   cancelled: { label: "Cancelled", icon: "–" },
 };
 const FILTERS: { id: "all" | RequestStatus; label: string }[] = [
   { id: "all", label: "All" },
-  { id: "pending", label: "Waiting" },
+  { id: "pending", label: "Pending" },
   { id: "approved", label: "Confirmed" },
-  { id: "countered", label: "New time" },
-  { id: "declined", label: "Declined" },
+  { id: "countered", label: "New time proposed" },
+  { id: "declined", label: "Denied" },
 ];
 
 const when = (start: string, end: string) =>
@@ -99,9 +99,9 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
       {shown.map((x) => {
         const s = STATUS[x.status];
         const agentFirst = x.otherAgent.name.split(" ")[0] || "the listing agent";
-        const remind = view === "sent" ? nudgeFor("remind", x, me, licenses) : null;
         const resend = view === "sent" ? nudgeFor("resend", x, me, licenses) : null;
         const canStart = view === "sent" && x.status === "approved" && dateOf(x.startsAt) <= today;
+        const slot = (a: string, b: string) => ({ date: dateOf(a), start: minutesOfDay(a), minutes: Math.max(15, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000)) });
         return (
           <article key={x.id} className={`card status-card status-${x.status}`} aria-label={`${x.address}, ${s.label}`}>
             <div className="row" style={{ alignItems: "flex-start" }}>
@@ -113,7 +113,12 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
                   {view === "incoming" ? `${x.otherAgent.name} · ${x.buyerLabel}` : `${x.buyerLabel} · ${x.otherAgent.name}`}
                 </span>
               </div>
-              <span className="status-icon" role="img" aria-label={s.label} title={s.label}>{s.icon}</span>
+            </div>
+            {/* Color plus words, so the status is clear for everyone, including color-blind users. */}
+            <div className="row" style={{ gap: 8 }}>
+              <span className="status-icon" aria-hidden="true">{s.icon}</span>
+              <span className="strong">{s.label}</span>
+              {x.lateEta && x.status === "approved" && <span className="pill amber">Running late · ETA {formatClock(minutesOfDay(x.lateEta))}</span>}
             </div>
 
             {x.status === "countered" && x.proposedStartsAt && x.proposedEndsAt && (
@@ -139,24 +144,34 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
               <Link href={`/showings/${x.id}/visit`} className="btn dark block">{x.arrivedAt ? (x.feedback ? "View showing" : "Leave feedback") : "Start showing"}</Link>
             )}
 
-            {view === "incoming" ? (
+            {view === "incoming" && (
               <IncomingResponse
                 id={x.id}
                 status={x.status}
-                date={dateOf(x.startsAt)}
-                start={minutesOfDay(x.startsAt)}
-                minutes={Math.max(15, Math.round((new Date(x.endsAt).getTime() - new Date(x.startsAt).getTime()) / 60000))}
+                request={slot(x.startsAt, x.endsAt)}
+                proposal={x.status === "countered" && x.proposedStartsAt && x.proposedEndsAt ? slot(x.proposedStartsAt, x.proposedEndsAt) : null}
+                note={x.responseNote}
               />
-            ) : (
+            )}
+            {view === "incoming" && (x.otherAgent.phone || x.otherAgent.email) && (
+              <div className="row small" style={{ flexWrap: "wrap", gap: 6 }}>
+                <span className="muted">Contact {agentFirst}:</span>
+                {x.otherAgent.phone && <a className="chip row" style={{ color: "var(--ink)" }} href={`sms:${x.otherAgent.phone.replace(/[^\d+]/g, "")}`}>Text</a>}
+                {x.otherAgent.phone && <a className="chip row" style={{ color: "var(--ink)" }} href={`tel:${x.otherAgent.phone.replace(/[^\d+]/g, "")}`}>Call</a>}
+                {x.otherAgent.email && <a className="chip row" style={{ color: "var(--ink)" }} href={`mailto:${x.otherAgent.email}`}>Email</a>}
+              </div>
+            )}
+            {view === "sent" && (
               <SentActions
                 id={x.id}
                 status={x.status}
                 typedIn={x.listingId === null}
                 listingId={x.listingId}
-                agentFirst={agentFirst}
-                remind={{ method: remind!.draft.method, href: remind!.href, label: remind!.draft.actionLabel, body: remind!.draft.body, subject: remind!.draft.subject }}
+                agent={{ name: x.otherAgent.name, phone: x.otherAgent.phone, email: x.otherAgent.email }}
+                slot={slot(x.startsAt, x.endsAt)}
+                comments={x.comments}
                 resend={{ method: resend!.draft.method, href: resend!.href, label: resend!.draft.actionLabel, body: resend!.draft.body, subject: resend!.draft.subject }}
-                reminded={x.remindedAt ? `Reminded ${x.reminderCount > 1 ? `${x.reminderCount} times, last ` : ""}${ago(x.remindedAt)}` : null}
+                reminded={x.remindedAt ? `Sent again ${x.reminderCount > 1 ? `${x.reminderCount} times, last ` : ""}${ago(x.remindedAt)}` : null}
               />
             )}
           </article>

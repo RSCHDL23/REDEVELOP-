@@ -33,3 +33,10 @@ export async function sendTour(_prev: SendTourState, formData: FormData): Promis
   revalidatePath("/today");
   return { sent: stops.length };
 }
+
+/** Finds map coordinates for a typed-in starting address. */
+export async function findAddress(address: string): Promise<{ address: string; lat: number; lng: number } | { error: string }> {
+  const { geocode } = await import("@/lib/server/geocode");
+  const hit = await geocode(address);
+  return hit ?? { error: "Couldn't find that address. Check the street, city and state." };
+}

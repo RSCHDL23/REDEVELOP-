@@ -5,12 +5,15 @@ import { dateOf, minutesOfDay, prettyDate, todayISO } from "@/lib/data/dates";
 import { daysUntil } from "@/lib/core/deadlines";
 import { formatClock } from "@/lib/core/time";
 import { Initials } from "@/components/ui";
+import { upcomingAnniversaries } from "@/lib/core/remember";
+import { tripsFor } from "@/lib/data/requestMessages";
+import { TripAlerts } from "@/components/TripAlerts";
 
 export const metadata: Metadata = { title: "Today" };
 
 export default async function TodayPage() {
   const r = repo();
-  const [me, requests, deals] = await Promise.all([r.getMe(), r.listRequests(), r.listDeals()]);
+  const [me, requests, deals, clients] = await Promise.all([r.getMe(), r.listRequests(), r.listDeals(), r.listClients()]);
   const today = todayISO();
   const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", hour: "numeric", hourCycle: "h23" }).format(new Date()));
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -37,7 +40,12 @@ export default async function TodayPage() {
           <span className="small strong muted">{prettyDate(today, { weekday: "long", month: "long", day: "numeric" })}</span>
           <h1 className="page-title">{greeting}, {me.fullName.split(" ")[0] || "there"}</h1>
         </div>
-        <Link href="/profile" aria-label="Your profile"><Initials name={me.fullName} url={me.headshotUrl} /></Link>
+        <div className="row" style={{ gap: 8 }}>
+          <Link href="/calendar" className="btn" aria-label="Calendar" style={{ width: 44, padding: 0, borderRadius: "50%" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="2" /><path d="M3 9.5h18M8 2.5v4M16 2.5v4" /></svg>
+          </Link>
+          <Link href="/profile" aria-label="Your profile"><Initials name={me.fullName} url={me.headshotUrl} /></Link>
+        </div>
       </header>
 
       <section className="grid-3" aria-label="Needs attention">
@@ -55,6 +63,8 @@ export default async function TodayPage() {
         </Link>
       </section>
 
+      <TripAlerts trips={tripsFor(requests, clients, me, today)} />
+
       <Link href="/tour" className="card dark" style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
         <span className="avatar" style={{ borderRadius: 12 }} aria-hidden="true">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z" /></svg>
@@ -64,6 +74,17 @@ export default async function TodayPage() {
           <span className="small muted">One tap fits every home around everyone&apos;s calendar</span>
         </span>
       </Link>
+
+      {(() => {
+        const soon = upcomingAnniversaries(clients, today, 7);
+        if (!soon.length) return null;
+        return (
+          <Link href="/remember" className="card" style={{ color: "var(--ink)", background: "#f6effa", borderColor: "#dcc5e8" }}>
+            <span className="strong">🎉 REmember: {soon[0].daysAway === 0 ? `${soon[0].client.name}'s home anniversary is today!` : `${soon.length} home anniversar${soon.length > 1 ? "ies" : "y"} this week`}</span>
+            <span className="small muted">{soon.map((a) => `${a.client.name} (${a.years} yr)`).join(" · ")}</span>
+          </Link>
+        );
+      })()}
 
       <section className="stack">
         <h2 className="section-label">Today</h2>

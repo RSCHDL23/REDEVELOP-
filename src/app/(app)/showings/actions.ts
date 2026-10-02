@@ -155,6 +155,20 @@ export async function createRequest(_prev: NewRequestState, formData: FormData):
   return { send: sendLinkFor(created, me, preApproved, licenses) };
 }
 
+// ---------- Requester edits the request ----------
+const edit = z.object({ id: z.string().min(1), date: DATE, time: TIME, minutes: MINUTES, comments: z.string().trim().max(500).optional().default("") });
+
+export async function editRequest(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = edit.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form." };
+  const f = parsed.data;
+  const start = minutesOf(f.time);
+  if (start + f.minutes > 24 * 60) return { error: "That runs past midnight. Pick an earlier time." };
+  await repo().editRequest(f.id, { startsAt: toTimestamp(f.date, start), endsAt: toTimestamp(f.date, start + f.minutes), comments: f.comments });
+  refresh();
+  return { ok: "Changes saved." };
+}
+
 // ---------- At the showing ----------
 export async function arrive(id: string): Promise<ActionState> {
   if (!id) return { error: "Something went wrong." };
@@ -179,4 +193,12 @@ export async function sendFeedback(_prev: ActionState, formData: FormData): Prom
   await repo().submitFeedback(id, f);
   refresh();
   return { ok: "Feedback sent." };
+}
+
+/** Requester is running late: listing side sees the new ETA in REschedule. */
+export async function runningLate(id: string, etaIso: string): Promise<ActionState> {
+  if (!id || Number.isNaN(Date.parse(etaIso))) return { error: "Something went wrong." };
+  await repo().setLateEta(id, new Date(etaIso).toISOString());
+  refresh();
+  return { ok: "ETA sent." };
 }

@@ -3,7 +3,8 @@
 import { useActionState, useState } from "react";
 import { PROFESSION_LABELS, type Profession } from "@/lib/core/access";
 import type { ContactPreference, Website } from "@/lib/data/types";
-import { addLicense, saveContact, saveDetails, saveWebsites, type FormState } from "./actions";
+import { addLicense, saveContact, saveDetails, saveIdChoice, saveReviewLinks, saveStartPlaces, saveWebsites, type FormState } from "./actions";
+import type { Place } from "@/lib/data/types";
 
 function Status({ state }: { state: FormState }) {
   if (state.error) return <p className="error" role="alert">{state.error}</p>;
@@ -107,24 +108,85 @@ export function ContactForm({ pref }: { pref: ContactPreference }) {
   );
 }
 
-export function WebsitesForm({ websites }: { websites: Website[] }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(saveWebsites, {});
+export function WebsitesForm({ websites, kind = "websites" }: { websites: Website[]; kind?: "websites" | "reviews" }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(kind === "reviews" ? saveReviewLinks : saveWebsites, {});
   const [rows, setRows] = useState(websites.length ? websites.map((w, i) => ({ ...w, key: i })) : [{ label: "", url: "", key: 0 }]);
   return (
     <form action={action} className="card">
-      <span className="small muted">Your brokerage site, IDX search, Zillow, Instagram, YouTube… Shown on your public profile.</span>
+      <span className="small muted">{kind === "reviews"
+        ? "Where clients can review you: Zillow, Google, Realtor.com, Yelp… Added to every review request."
+        : "Your brokerage site, IDX search, Zillow, Instagram, YouTube… Shown on your public profile."}</span>
       {rows.map((r, i) => (
         <div key={r.key} className="stack" style={{ gap: 6, paddingBottom: 8, borderBottom: "1px solid var(--line)" }}>
           <div className="row" style={{ gap: 6 }}>
-            <input name="label" className="input" aria-label={`Website ${i + 1} name`} placeholder="Name, e.g. My listings" defaultValue={r.label} maxLength={40} style={{ flex: 1 }} />
+            <input name="label" className="input" aria-label={`Website ${i + 1} name`} placeholder={kind === "reviews" ? "Site, e.g. Zillow" : "Name, e.g. My listings"} defaultValue={r.label} maxLength={40} style={{ flex: 1 }} />
             <button type="button" className="btn danger" aria-label={`Remove website ${i + 1}`} onClick={() => setRows(rows.filter((x) => x.key !== r.key))} style={{ width: 48, padding: 0 }}>✕</button>
           </div>
           <input name="url" className="input" aria-label={`Website ${i + 1} link`} placeholder="https://" defaultValue={r.url} maxLength={300} inputMode="url" />
         </div>
       ))}
-      {rows.length < 8 && <button type="button" className="btn block" onClick={() => setRows([...rows, { label: "", url: "", key: Date.now() }])}>+ Add website</button>}
+      {rows.length < 8 && <button type="button" className="btn block" onClick={() => setRows([...rows, { label: "", url: "", key: Date.now() }])}>{kind === "reviews" ? "+ Add review site" : "+ Add website"}</button>}
       <Status state={state} />
-      <button className="btn primary block" disabled={pending}>{pending ? "Saving…" : "Save websites"}</button>
+      <button className="btn primary block" disabled={pending}>{pending ? "Saving…" : kind === "reviews" ? "Save review sites" : "Save websites"}</button>
+    </form>
+  );
+}
+
+export function IdChoiceForm({ mlsAgentId, idInMessages }: { mlsAgentId: string; idInMessages: "license" | "mls_id" | "both" }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveIdChoice, {});
+  return (
+    <form action={action} className="card">
+      <span className="small muted">What to show in showing requests you send outside the app.</span>
+      <div className="field"><label htmlFor="mlsAgentId">MLS agent ID</label><input id="mlsAgentId" name="mlsAgentId" className="input" defaultValue={mlsAgentId} maxLength={30} placeholder="e.g. 70012345" /></div>
+      <fieldset style={{ border: 0, margin: 0, padding: 0 }} className="stack">
+        <legend className="small strong" style={{ marginBottom: 6 }}>Show in requests</legend>
+        {[["license", "License number"], ["mls_id", "MLS agent ID"], ["both", "Both"]].map(([id, label]) => (
+          <label key={id} className="row" style={{ cursor: "pointer" }}>
+            <input type="radio" name="idInMessages" value={id} defaultChecked={idInMessages === id} style={{ width: 20, height: 20 }} /> {label}
+          </label>
+        ))}
+      </fieldset>
+      <Status state={state} />
+      <button className="btn primary block" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
+    </form>
+  );
+}
+
+export function StartPlacesForm({ home, office }: { home: Place | null; office: Place | null }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveStartPlaces, {});
+  const [coords, setCoords] = useState<Record<string, { lat: number; lng: number } | null>>({ home: null, office: null });
+  const [addr, setAddr] = useState({ home: home?.address ?? "", office: office?.address ?? "" });
+  const [msg, setMsg] = useState("");
+  function here(key: "home" | "office") {
+    if (!navigator.geolocation) { setMsg("Location isn't available on this device."); return; }
+    setMsg("Finding you…");
+    navigator.geolocation.getCurrentPosition(
+      (p) => { setCoords((c) => ({ ...c, [key]: { lat: p.coords.latitude, lng: p.coords.longitude } })); setAddr((a) => ({ ...a, [key]: a[key] || (key === "home" ? "Home" : "Office") })); setMsg(`Got it. Tap Save to keep this as your ${key}.`); },
+      () => setMsg("Allow location access, or type the address."),
+      { timeout: 10000 },
+    );
+  }
+  return (
+    <form action={action} className="card">
+      <span className="small muted">Where your tours can start. Used for drive times and &ldquo;time to leave&rdquo; alerts.</span>
+      {(["home", "office"] as const).map((k) => {
+        const saved = k === "home" ? home : office;
+        return (
+          <div key={k} className="field">
+            <label htmlFor={`${k}Address`}>{k === "home" ? "Home address" : "Office address"}</label>
+            <input id={`${k}Address`} name={`${k}Address`} className="input" value={addr[k]} onChange={(e) => { setAddr((a) => ({ ...a, [k]: e.target.value })); setCoords((c) => ({ ...c, [k]: null })); }} maxLength={200} placeholder="Street, city, state" />
+            <input type="hidden" name={`${k}Lat`} value={coords[k]?.lat ?? ""} />
+            <input type="hidden" name={`${k}Lng`} value={coords[k]?.lng ?? ""} />
+            <div className="between">
+              <span className="tiny muted">{coords[k] ? "📍 Using your current location" : saved?.lat != null ? "📍 On the map" : saved ? "Not found on the map yet" : ""}</span>
+              <button type="button" className="btn" style={{ minHeight: 32, fontSize: 12 }} onClick={() => here(k)}>Use where I am now</button>
+            </div>
+          </div>
+        );
+      })}
+      {msg && <span className="small" role="status">{msg}</span>}
+      <Status state={state} />
+      <button className="btn primary block" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
     </form>
   );
 }

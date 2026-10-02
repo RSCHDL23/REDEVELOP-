@@ -12,6 +12,8 @@ export interface Sender {
   email?: string;
   /** e.g. "IL 475.123456" */
   licenseId?: string;
+  /** MLS agent ID, if the agent chose to show it. */
+  mlsId?: string;
 }
 
 export interface RequestDetails {
@@ -35,7 +37,8 @@ export interface Draft {
 
 const buyers = (d: RequestDetails) => `${d.preApproved ? "pre-approved buyers" : "buyers"}, ${d.buyerNames}`;
 
-const who = (s: Sender) => `${s.name}${s.licenseId ? ` (lic. ${s.licenseId})` : ""} with ${s.brokerage}`;
+const ids = (s: Sender) => [s.licenseId ? `lic. ${s.licenseId}` : null, s.mlsId ? `MLS ID ${s.mlsId}` : null].filter(Boolean).join(", ");
+const who = (s: Sender) => `${s.name}${ids(s) ? ` (${ids(s)})` : ""} with ${s.brokerage}`;
 const contactLine = (s: Sender) => [s.phone, s.email].filter(Boolean).join(" · ");
 
 export function textRequest(s: Sender, d: RequestDetails): string {
@@ -59,6 +62,7 @@ export function emailRequest(s: Sender, d: RequestDetails): { subject: string; b
     "",
     `Requesting agent: ${s.name}`,
     s.licenseId ? `License #: ${s.licenseId}` : null,
+    s.mlsId ? `MLS agent ID: ${s.mlsId}` : null,
     `Brokerage: ${s.brokerage}`,
     `Phone: ${s.phone}`,
     s.email ? `Email: ${s.email}` : null,

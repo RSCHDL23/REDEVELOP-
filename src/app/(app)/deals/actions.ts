@@ -105,5 +105,11 @@ export async function createDeal(_prev: NewDealState, formData: FormData): Promi
     milestones: milestones.map((m) => (m.kind === "closing" ? { ...m, due: f.closingDate } : m)),
   });
   refresh(id);
-  redirect(`/deals/${id}`);
+  redirect(`/deals/${id}?created=1`);
+}
+
+export async function markReviewRequested(clientId: string) {
+  if (!clientId) return;
+  await repo().markReviewRequested(clientId);
+  revalidatePath("/clients");
 }

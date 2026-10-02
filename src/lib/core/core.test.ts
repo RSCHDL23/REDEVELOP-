@@ -204,3 +204,37 @@ describe("after-closing checklist", () => {
     expect(greetingName("Ana Price")).toBe("Ana");
   });
 });
+
+import { holidaysWithNames, isBankingDay } from "./deadlines";
+describe("holiday calendar", () => {
+  it("names holidays and knows bank closures", () => {
+    const h2026 = holidaysWithNames(2026);
+    expect(h2026).toHaveLength(11);
+    // July 4, 2026 is a Saturday: federal offices observe Friday July 3, banks stay open.
+    const july = h2026.find((h) => h.name.startsWith("Independence"))!;
+    expect(july.date).toBe("2026-07-03");
+    expect(july.banksClosed).toBe(false);
+    expect(isBankingDay("2026-07-03")).toBe(true);
+    expect(isBankingDay("2026-10-12")).toBe(false); // Columbus Day
+    expect(isBankingDay("2026-10-13")).toBe(true);
+  });
+});
+
+import { anniversaryMessage, nextAnniversary, upcomingAnniversaries } from "./remember";
+describe("REmember anniversaries", () => {
+  it("finds the next anniversary and its year count", () => {
+    expect(nextAnniversary("2025-10-07", "2026-10-01")).toEqual({ date: "2026-10-07", years: 1 });
+    expect(nextAnniversary("2024-03-15", "2026-10-01")).toEqual({ date: "2027-03-15", years: 3 });
+    expect(nextAnniversary("2024-02-29", "2026-01-10")).toEqual({ date: "2026-02-28", years: 2 });
+    expect(nextAnniversary("2026-09-01", "2026-10-01").years).toBe(1); // first one is next year
+  });
+  it("lists upcoming ones soonest first and skips opted-out clients", () => {
+    const list = upcomingAnniversaries([
+      { id: "a", closedOn: "2024-10-21", remember: true },
+      { id: "b", closedOn: "2025-10-07", remember: true },
+      { id: "c", closedOn: "2025-10-05", remember: false },
+    ], "2026-10-01");
+    expect(list.map((x) => x.client.id)).toEqual(["b", "a"]);
+    expect(anniversaryMessage({ clientFirst: "Chidi", years: 2, agentName: "Donna", agentPhone: "1" })).toContain("2nd home anniversary");
+  });
+});

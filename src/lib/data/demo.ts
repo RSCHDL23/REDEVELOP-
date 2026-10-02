@@ -6,7 +6,7 @@ import "server-only";
 import { contractMilestones, addDays } from "@/lib/core/deadlines";
 import { hm, subtract, type Window } from "@/lib/core/time";
 import type { Repo } from "./repo";
-import type { AgentSummary, Client, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, WeeklyHours } from "./types";
+import type { AgentSummary, Client, ClientReview, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, WeeklyHours } from "./types";
 import type { PublicProfile } from "./repo";
 import { nextSaturday, todayISO, toTimestamp, weekdayOf } from "./dates";
 
@@ -15,9 +15,11 @@ const agent = (id: string, name: string, phone: string, preferred: AgentSummary[
   contact: { preferred, methods: [preferred], textAfterCall: preferred === "call" }, ...extra,
 });
 
-const snapshot = (l: Listing) => ({ address: l.address, city: `${l.city}, ${l.state}`, photoUrl: l.photoUrl, beds: l.beds, baths: l.baths, sqft: l.sqft });
+const snapshot = (l: Listing) => ({ address: l.address, city: `${l.city}, ${l.state}`, photoUrl: l.photoUrl, beds: l.beds, baths: l.baths, sqft: l.sqft, lat: l.lat, lng: l.lng });
 
 const ME_ID = "demo-donna";
+type BaseClient = Omit<Client, "closedOn" | "remember" | "reviewToken" | "reviewRequestedAt"> & Partial<Pick<Client, "closedOn">>;
+const withClientDefaults = (c: BaseClient): Client => ({ closedOn: null, remember: true, reviewToken: `tok-${c.id}`, reviewRequestedAt: null, ...c });
 const DEAL_CLIENTS: Record<string, string> = { "Ana Price": "c-price", "The Sandovals": "c-sandoval", "The Greens": "c-greens", "Tasha Greene": "c-greene", "Grace & Tom Ward": "c-ward" };
 
 interface Store {
@@ -28,6 +30,7 @@ interface Store {
   listings: Listing[];
   requests: ShowingRequest[];
   clients: Client[];
+  reviews: ClientReview[];
   deals: Deal[];
   hours: WeeklyHours[];
   homeWindows: Record<string, Window[]>;
@@ -66,7 +69,7 @@ function seed(): Store {
       id, listingId, address: l.address, photoUrl: l.photoUrl, otherAgent: who, otherAgentName: who.name, buyerLabel: buyer,
       startsAt: toTimestamp(date, start), endsAt: toTimestamp(date, start + len), status, direction,
       proposedStartsAt: null, proposedEndsAt: null, responseNote: "", remindedAt: null, reminderCount: 0,
-      comments: "", arrivedAt: null, feedback: null, clientId: clientIds[buyer] ?? null, home: snapshot(l), ...extra,
+      comments: "", arrivedAt: null, lateEta: null, feedback: null, clientId: clientIds[buyer] ?? null, home: snapshot(l), ...extra,
     };
   };
   const requests = [
@@ -82,17 +85,18 @@ function seed(): Store {
     }),
     req("s4", "gra", null, "The Greens", addDays(today, 3), hm(16), 30, "sent", "declined"),
   ];
-  const clients: Client[] = [
+  const clients: Client[] = ([
     { id: "c-alvarez", name: "Maria & Luis Alvarez", phone: "(708) 555-0111", email: "alvarez@example.com", preApproved: true, stage: "present", source: "manual", intent: "Buying", notes: "3 bed, under $650k, near the Brown Line", createdAt: toTimestamp(addDays(today, -40), hm(12)) },
     { id: "c-price", name: "Ana Price", phone: "(312) 555-0160", email: "ana@example.com", preApproved: true, stage: "present", source: "manual", intent: "Buying", notes: "", createdAt: toTimestamp(addDays(today, -60), hm(12)) },
     { id: "c-greens", name: "The Greens", phone: "(773) 555-0172", email: "greens@example.com", preApproved: false, stage: "present", source: "manual", intent: "Buying", notes: "", createdAt: toTimestamp(addDays(today, -30), hm(12)) },
     { id: "c-greene", name: "Tasha Greene", phone: "(219) 555-0135", email: "tasha@example.com", preApproved: true, stage: "present", source: "manual", intent: "Buying", notes: "", createdAt: toTimestamp(addDays(today, -50), hm(12)) },
     { id: "c-sandoval", name: "The Sandovals", phone: "(847) 555-0181", email: "sandoval@example.com", preApproved: false, stage: "present", source: "deal", intent: "Selling", notes: "", createdAt: toTimestamp(addDays(today, -90), hm(12)) },
     { id: "c-ward", name: "Grace & Tom Ward", phone: "(312) 555-0144", email: "ward@example.com", preApproved: false, stage: "present", source: "deal", intent: "Selling", notes: "", createdAt: toTimestamp(addDays(today, -45), hm(12)) },
-    { id: "c-okafor", name: "Chidi Okafor", phone: "(773) 555-0190", email: "chidi@example.com", preApproved: true, stage: "past", source: "manual", intent: "Buying", notes: "Closed on a 2-flat in Avondale last spring", createdAt: toTimestamp(addDays(today, -300), hm(12)) },
+    { id: "c-okafor", name: "Chidi Okafor", phone: "(773) 555-0190", email: "chidi@example.com", preApproved: true, stage: "past", source: "manual", intent: "Buying", notes: "Closed on a 2-flat in Avondale", createdAt: toTimestamp(addDays(today, -400), hm(12)), closedOn: addDays(today, 6 - 365) },
+    { id: "c-holt", name: "Marcus & Jen Holt", phone: "(630) 555-0175", email: "holt@example.com", preApproved: true, stage: "past", source: "manual", intent: "Buying", notes: "Bought in Oak Park", createdAt: toTimestamp(addDays(today, -800), hm(12)), closedOn: addDays(today, 20 - 730) },
     { id: "c-nguyen", name: "Linh Nguyen", phone: "(312) 555-0107", email: "linh@example.com", preApproved: false, stage: "future", source: "link", intent: "Buying", notes: "", createdAt: toTimestamp(addDays(today, -1), hm(18)) },
     { id: "c-baker", name: "Rosa Baker", phone: "", email: "rosa@example.com", preApproved: false, stage: "future", source: "link", intent: "Selling", notes: "", createdAt: toTimestamp(addDays(today, -3), hm(9)) },
-  ];
+  ] as BaseClient[]).map(withClientDefaults);
   const mkDeal = (id: string, address: string, city: string, side: Deal["side"], stage: string, acceptance: string, closing: string, loanType: string, clientName: string, extra: Partial<Deal> = {}): Deal => {
     const ms = contractMilestones({ acceptance, closing, mortgageContingencyDays: loanType === "Cash" ? undefined : 21 });
     return {
@@ -138,7 +142,9 @@ function seed(): Store {
   ];
   const hours: WeeklyHours[] = [0, 1, 2, 3, 4, 5, 6].map((d) => ({ weekday: d, start: d === 0 ? hm(11) : hm(9), end: d === 6 ? hm(17) : d === 0 ? hm(16) : hm(19), on: d !== 0 }));
   return {
-    me: { id: ME_ID, fullName: "Donna White", email: "donna@example.com", phone: "(708) 555-0123", tagline: "", bio: "Chicagoland and NW Indiana agent and loan officer", headshotUrl: null, logoUrl: null, brokerage: "D. White Realty", slug: "donna-white", websites: [{ label: "D. White Realty", url: "https://example.com" }], mapApp: "google", serviceAreas: ["Chicago", "Oak Park", "Evanston", "NW Indiana"], selfRoles: [] },
+    me: { id: ME_ID, fullName: "Donna White", email: "donna@example.com", phone: "(708) 555-0123", tagline: "", bio: "Chicagoland and NW Indiana agent and loan officer", headshotUrl: null, logoUrl: null, brokerage: "D. White Realty", slug: "donna-white", websites: [{ label: "D. White Realty", url: "https://example.com" }], mapApp: "google",
+      mlsAgentId: "70012345", idInMessages: "license", home: { address: "Your home (sample)", lat: 41.8855, lng: -87.7845 }, office: { address: "D. White Realty office (sample)", lat: 41.9435, lng: -87.6795 },
+      reviewLinks: [{ label: "Zillow", url: "https://www.zillow.com/profile/" }, { label: "Google", url: "https://g.page/r/" }], rememberAuto: true, rememberChannel: "text", serviceAreas: ["Chicago", "Oak Park", "Evanston", "NW Indiana"], selfRoles: [] },
     contact: { preferred: "app", methods: ["app", "text"], textAfterCall: true },
     portfolio: [],
     licenses: [
@@ -147,6 +153,10 @@ function seed(): Store {
       { id: "lic-mlo", profession: "mortgage_loan_originator", state: "IL", number: "1234567", sponsor: "[Mortgage company]", expiresOn: null, ceHours: 8, status: "verified" },
     ],
     listings, requests, clients, deals, hours, homeWindows,
+    reviews: [
+      { name: "Chidi O.", stars: 5, body: "Donna found us a 2-flat that pays half our mortgage. She knew every lender rule and kept us calm through appraisal.", at: toTimestamp(addDays(today, -300), hm(12)) },
+      { name: "Marcus & Jen H.", stars: 5, body: "Fast, honest and always picked up the phone.", at: toTimestamp(addDays(today, -700), hm(12)) },
+    ],
   };
 }
 
@@ -205,7 +215,7 @@ export const demoRepo: Repo = {
       photoUrl: l?.photoUrl ?? null, otherAgent: who, otherAgentName: who.name, buyerLabel: input.buyerLabel,
       startsAt: input.startsAt, endsAt: input.endsAt, status: l?.instantShowings ? "approved" : "pending", direction: "sent",
       proposedStartsAt: null, proposedEndsAt: null, responseNote: "", remindedAt: null, reminderCount: 0,
-      comments: input.comments ?? "", arrivedAt: null, feedback: null, clientId: input.clientId ?? null,
+      comments: input.comments ?? "", arrivedAt: null, lateEta: null, feedback: null, clientId: input.clientId ?? null,
       home: l ? snapshot(l) : { address: m!.address, city: "", photoUrl: null, beds: null, baths: null, sqft: null },
     };
     s.requests.push(created);
@@ -223,7 +233,7 @@ export const demoRepo: Repo = {
   },
   async listClients() { return [...store().clients].sort((a, b) => a.name.localeCompare(b.name)); },
   async addClient(input) {
-    const c: Client = { id: `c-${Date.now()}`, stage: "present", source: "manual", intent: "", notes: "", createdAt: new Date().toISOString(), ...input };
+    const c: Client = withClientDefaults({ id: `c-${Date.now()}`, stage: "present", source: "manual", intent: "", notes: "", createdAt: new Date().toISOString(), ...input });
     store().clients.push(c);
     return c;
   },
@@ -236,12 +246,36 @@ export const demoRepo: Repo = {
       slug: me.slug, fullName: me.fullName, tagline: me.tagline, bio: me.bio, phone: me.phone, email: me.email,
       headshotUrl: me.headshotUrl, logoUrl: me.logoUrl, brokerage: me.brokerage, websites: me.websites,
       licenses: s.licenses.filter((l) => l.status === "verified").map((l) => ({ profession: l.profession, state: l.state, number: l.number })),
+      reviews: s.reviews,
     } satisfies PublicProfile;
   },
   async connectToPro(slug, input) {
     const s = store();
     if (slug.toLowerCase() !== s.me.slug) throw new Error("Profile not found");
-    s.clients.push({ id: `c-${Date.now()}`, name: input.name, phone: input.phone, email: input.email, preApproved: false, stage: "future", source: "link", intent: input.intent, notes: "", createdAt: new Date().toISOString() });
+    s.clients.push(withClientDefaults({ id: `c-${Date.now()}`, name: input.name, phone: input.phone, email: input.email, preApproved: false, stage: "future", source: "link", intent: input.intent, notes: "", createdAt: new Date().toISOString() }));
+  },
+  async editRequest(id, input) {
+    const r = store().requests.find((x) => x.id === id);
+    if (!r || r.direction !== "sent" || r.status === "cancelled") return;
+    const timeChanged = r.startsAt !== input.startsAt || r.endsAt !== input.endsAt;
+    Object.assign(r, { startsAt: input.startsAt, endsAt: input.endsAt, comments: input.comments });
+    if (timeChanged) Object.assign(r, { status: "pending", proposedStartsAt: null, proposedEndsAt: null, responseNote: "" });
+  },
+  async setLateEta(id, eta) { const r = store().requests.find((x) => x.id === id); if (r && r.direction === "sent") r.lateEta = eta; },
+  async updateClient(id, patch) { const c = store().clients.find((x) => x.id === id); if (c) Object.assign(c, patch); },
+  async markReviewRequested(clientId) { const c = store().clients.find((x) => x.id === clientId); if (c) c.reviewRequestedAt = new Date().toISOString(); },
+  async listMyReviews() { return store().reviews; },
+  async getReviewTarget(token) {
+    const s = store();
+    const c = s.clients.find((x) => x.reviewToken === token);
+    if (!c) return null;
+    return { agentName: s.me.fullName, slug: s.me.slug, clientFirst: c.name.split(" ")[0], already: s.reviews.some((r) => r.name.startsWith(c.name.split(" ")[0])), reviewLinks: s.me.reviewLinks };
+  },
+  async submitReview(token, input) {
+    const s = store();
+    const c = s.clients.find((x) => x.reviewToken === token);
+    if (!c) throw new Error("This review link is not valid");
+    s.reviews.unshift({ name: input.name || c.name.split(" ")[0], stars: input.stars, body: input.body, at: new Date().toISOString() });
   },
   async getTourContext(date) {
     const s = store();
@@ -297,7 +331,10 @@ export const demoRepo: Repo = {
     m.done = !m.done;
     // Closing day: the client moves to Past.
     const c = s.clients.find((x) => x.id === d.clientId);
-    if (m.kind === "closing" && c) c.stage = m.done ? "past" : "present";
+    if (m.kind === "closing" && c) {
+      c.stage = m.done ? "past" : "present";
+      c.closedOn = m.done ? m.due : null; // starts REmember anniversaries
+    }
   },
   async postLoanUpdate(dealId, status, note) {
     const d = store().deals.find((x) => x.id === dealId);

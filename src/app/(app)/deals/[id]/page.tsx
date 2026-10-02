@@ -7,8 +7,10 @@ import { daysUntil } from "@/lib/core/deadlines";
 import { can, needsDualRoleDisclosure, rolesFor } from "@/lib/core/access";
 import { BackLink, Initials } from "@/components/ui";
 import { postLoanUpdate, setMilestoneDate, toggleMilestone, toggleTask } from "../actions";
-import { checklistMessage, greetingName, type ClosingSide } from "@/lib/core/closing";
+import { checklistMessage, greetingName, reviewRequestMessage, type ClosingSide } from "@/lib/core/closing";
+import { appOrigin } from "@/lib/server/origin";
 import { Celebration } from "./Celebration";
+import { UnderContract } from "./UnderContract";
 
 export const metadata: Metadata = { title: "Deal" };
 
@@ -27,8 +29,8 @@ const ROLE_NAME: Record<string, string> = {
 
 const LOAN_STATUSES = ["Application received", "Appraisal ordered", "Appraisal in", "Conditional approval", "Clear to close", "Docs sent to title", "Funded"];
 
-export default async function DealPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; celebrate?: string }> }) {
-  const [{ id }, { tab = "dates", celebrate }] = await Promise.all([params, searchParams]);
+export default async function DealPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; celebrate?: string; created?: string }> }) {
+  const [{ id }, { tab = "dates", celebrate, created }] = await Promise.all([params, searchParams]);
   const r = repo();
   const [deal, licenses, me] = await Promise.all([r.getDeal(id), r.listLicenses(), r.getMe()]);
   if (!deal) notFound();
@@ -40,7 +42,19 @@ export default async function DealPage({ params, searchParams }: { params: Promi
   const toClose = daysUntil(today, deal.closingDate);
   const sides: ClosingSide[] = deal.side === "both" ? ["buyer", "seller"] : [deal.side];
   const showCelebration = celebrate === "1" && deal.milestones.some((m) => m.kind === "closing" && m.done);
+  const showUnderContract = created === "1";
   const client = showCelebration && deal.clientId ? (await r.listClients()).find((c) => c.id === deal.clientId) : undefined;
+  // Post details: photo from the listing if it's in the system.
+  const origin = showCelebration || showUnderContract ? await appOrigin() : "";
+  const listing = showCelebration || showUnderContract ? (await r.listListings()).find((l) => l.address.toLowerCase() === deal.address.toLowerCase()) : undefined;
+  const post = {
+    address: deal.address, city: deal.city, photoUrl: listing?.photoUrl ?? null, agentName: me.fullName, brokerage: me.brokerage,
+    phone: me.phone, logoUrl: me.logoUrl, shareUrl: `${origin}/p/${me.slug}`,
+  };
+  const review = showCelebration && client
+    ? { clientId: client.id, phone: client.phone || undefined, email: client.email || undefined,
+        body: reviewRequestMessage({ clientFirst: greetingName(client.name), agentName: me.fullName, reviewUrl: `${origin}/r/${client.reviewToken}`, sites: me.reviewLinks }) }
+    : null;
   const celebration = showCelebration
     ? sides.map((side) => {
         const person = deal.members.find((m) => m.role === side && !m.isYou);
@@ -52,7 +66,8 @@ export default async function DealPage({ params, searchParams }: { params: Promi
 
   return (
     <main className="page">
-      {celebration && <Celebration address={deal.address} dealId={deal.id} messages={celebration} />}
+      {celebration && <Celebration address={deal.address} dealId={deal.id} messages={celebration} post={post} review={review} />}
+      {showUnderContract && !celebration && <UnderContract dealId={deal.id} post={post} />}
       <BackLink href="/deals" label="Deals" />
       <header className="stack" style={{ gap: 4 }}>
         <h1 className="page-title">{deal.address}</h1>

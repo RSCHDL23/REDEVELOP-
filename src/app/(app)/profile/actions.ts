@@ -103,6 +103,35 @@ const site = z.object({
   url: z.string().trim().max(300).regex(/^https?:\/\/[^\s]+\.[^\s]+$/, "Each website needs a full link starting with https://"),
 });
 
+function parseLinks(formData: FormData): { ok: true; links: { label: string; url: string }[] } | { ok: false; error: string } {
+  const labels = formData.getAll("label").map(String);
+  const urls = formData.getAll("url").map(String);
+  const rows = urls.map((url, i) => ({ label: labels[i] ?? "", url: url.trim() })).filter((r) => r.url);
+  if (rows.length > 8) return { ok: false, error: "Up to 8 links." };
+  const parsed = z.array(site).safeParse(rows.map((r) => ({ ...r, url: /^https?:\/\//.test(r.url) ? r.url : `https://${r.url}` })));
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the links." };
+  return { ok: true, links: parsed.data };
+}
+
+export async function saveReviewLinks(_prev: FormState, formData: FormData): Promise<FormState> {
+  const r = parseLinks(formData);
+  if (!r.ok) return { error: r.error };
+  await repo().updateMe({ reviewLinks: r.links });
+  revalidatePath("/profile");
+  return { ok: "Saved." };
+}
+
+export async function saveIdChoice(_prev: FormState, formData: FormData): Promise<FormState> {
+  const mls = String(formData.get("mlsAgentId") ?? "").trim();
+  const choice = z.enum(["license", "mls_id", "both"]).safeParse(formData.get("idInMessages"));
+  if (!choice.success) return { error: "Pick what to show." };
+  if (mls.length > 30) return { error: "That MLS ID looks too long." };
+  if (choice.data !== "license" && !mls) return { error: "Add your MLS agent ID to show it." };
+  await repo().updateMe({ mlsAgentId: mls, idInMessages: choice.data });
+  revalidatePath("/profile");
+  return { ok: "Saved." };
+}
+
 export async function saveWebsites(_prev: FormState, formData: FormData): Promise<FormState> {
   const labels = formData.getAll("label").map(String);
   const urls = formData.getAll("url").map(String);
@@ -120,4 +149,25 @@ export async function saveMapApp(formData: FormData) {
   if (!app.success) return;
   await repo().updateMe({ mapApp: app.data });
   revalidatePath("/profile");
+}
+
+/** Home and office: where tours can start. Addresses are placed on the map with the Census geocoder. */
+export async function saveStartPlaces(_prev: FormState, formData: FormData): Promise<FormState> {
+  const { geocode } = await import("@/lib/server/geocode");
+  const missed: string[] = [];
+  async function place(key: "home" | "office") {
+    const address = String(formData.get(`${key}Address`) ?? "").trim().slice(0, 200);
+    if (!address) return null;
+    const lat = Number(formData.get(`${key}Lat`)), lng = Number(formData.get(`${key}Lng`));
+    if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return { address, lat, lng };
+    const hit = await geocode(address);
+    if (!hit) { missed.push(key); return { address, lat: null, lng: null }; }
+    return { address, lat: hit.lat, lng: hit.lng };
+  }
+  const [home, office] = await Promise.all([place("home"), place("office")]);
+  await repo().updateMe({ home, office });
+  revalidatePath("/profile");
+  revalidatePath("/tour");
+  if (missed.length) return { error: `Saved, but we couldn't find your ${missed.join(" and ")} address on the map. Check it, or use "Use where I am now".` };
+  return { ok: "Saved." };
 }
