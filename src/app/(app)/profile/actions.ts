@@ -80,17 +80,44 @@ export async function removeLicense(formData: FormData) {
   revalidatePath("/profile");
 }
 
-const contact = z.object({
-  preferred: z.enum(["app", "text", "email", "call", "online"]),
-  textAfterCall: z.string().optional(),
-  onlineUrl: z.string().trim().url("Use a full link starting with https://").startsWith("https://", "Use a full link starting with https://").or(z.literal("")).optional(),
-});
+const METHODS = ["app", "text", "email", "call", "online"] as const;
 
 export async function saveContact(_prev: FormState, formData: FormData): Promise<FormState> {
-  const parsed = contact.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message };
-  if (parsed.data.preferred === "online" && !parsed.data.onlineUrl) return { error: "Add your online scheduler link." };
-  await repo().saveContactPreference({ preferred: parsed.data.preferred, textAfterCall: parsed.data.textAfterCall === "on", onlineUrl: parsed.data.onlineUrl || undefined });
+  const methods = z.array(z.enum(METHODS)).min(1, "Pick at least one way.").safeParse(formData.getAll("methods"));
+  if (!methods.success) return { error: methods.error.issues[0]?.message };
+  const first = z.enum(METHODS).safeParse(formData.get("first"));
+  // First choice goes to the front; the rest keep their order.
+  const ordered = first.success && methods.data.includes(first.data) ? [first.data, ...methods.data.filter((m) => m !== first.data)] : methods.data;
+  const url = String(formData.get("onlineUrl") ?? "").trim();
+  if (ordered.includes("online")) {
+    if (!url) return { error: "Add your online scheduler link." };
+    if (!/^https:\/\/[^\s]+\.[^\s]+$/.test(url) || url.length > 300) return { error: "Use a full link starting with https://" };
+  }
+  await repo().saveContactPreference({ preferred: ordered[0], methods: ordered, textAfterCall: formData.get("textAfterCall") === "on", onlineUrl: ordered.includes("online") ? url : undefined });
   revalidatePath("/profile");
   return { ok: "Saved." };
+}
+
+const site = z.object({
+  label: z.string().trim().max(40),
+  url: z.string().trim().max(300).regex(/^https?:\/\/[^\s]+\.[^\s]+$/, "Each website needs a full link starting with https://"),
+});
+
+export async function saveWebsites(_prev: FormState, formData: FormData): Promise<FormState> {
+  const labels = formData.getAll("label").map(String);
+  const urls = formData.getAll("url").map(String);
+  const rows = urls.map((url, i) => ({ label: labels[i] ?? "", url: url.trim() })).filter((r) => r.url);
+  if (rows.length > 8) return { error: "Up to 8 websites." };
+  const parsed = z.array(site).safeParse(rows.map((r) => ({ ...r, url: /^https?:\/\//.test(r.url) ? r.url : `https://${r.url}` })));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message };
+  await repo().updateMe({ websites: parsed.data });
+  revalidatePath("/profile");
+  return { ok: "Saved." };
+}
+
+export async function saveMapApp(formData: FormData) {
+  const app = z.enum(["google", "apple", "waze"]).safeParse(formData.get("mapApp"));
+  if (!app.success) return;
+  await repo().updateMe({ mapApp: app.data });
+  revalidatePath("/profile");
 }

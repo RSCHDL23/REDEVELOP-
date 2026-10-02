@@ -8,6 +8,7 @@ import { toTimestamp } from "@/lib/data/dates";
 const tour = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   buyerLabel: z.string().trim().min(1).max(80),
+  comments: z.string().trim().max(500).optional().default(""),
   stops: z.array(z.object({
     listingId: z.string().min(1),
     start: z.number().int().min(0).max(1440),
@@ -24,9 +25,9 @@ export async function sendTour(_prev: SendTourState, formData: FormData): Promis
   try { raw = JSON.parse(String(formData.get("tour") ?? "")); } catch { return { error: "Something went wrong. Build the tour again." }; }
   const parsed = tour.safeParse(raw);
   if (!parsed.success) return { error: "Something went wrong. Build the tour again." };
-  const { date, buyerLabel, stops } = parsed.data;
+  const { date, buyerLabel, stops, comments } = parsed.data;
   for (const s of stops) {
-    await repo().createRequest({ listingId: s.listingId, startsAt: toTimestamp(date, s.start), endsAt: toTimestamp(date, s.end), buyerLabel, method: s.method });
+    await repo().createRequest({ listingId: s.listingId, startsAt: toTimestamp(date, s.start), endsAt: toTimestamp(date, s.end), buyerLabel, method: s.method, comments: comments || undefined });
   }
   revalidatePath("/showings");
   revalidatePath("/today");

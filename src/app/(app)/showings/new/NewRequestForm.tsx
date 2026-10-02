@@ -4,8 +4,9 @@ import { useActionState, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { LengthSelect, TimeSelect } from "@/components/TimeFields";
 import { createRequest, type NewRequestState } from "../actions";
+import { HomeSnapshot } from "@/components/HomeSnapshot";
 
-type Home = { id: string; address: string; city: string; photoUrl: string | null; source: string; agent: string; preferred: string; minutes: number; instant: boolean };
+type Home = { id: string; address: string; city: string; photoUrl: string | null; source: string; agent: string; preferred: string; methods: string[]; minutes: number; instant: boolean; beds: number; baths: number; sqft: number | null };
 type ClientOption = { id: string; name: string; preApproved: boolean };
 
 const METHOD_LABEL: Record<string, string> = {
@@ -114,8 +115,9 @@ export function NewRequestForm({ homes, clients, defaultListing, defaultClient, 
         <div className="card row" style={{ flexDirection: "row", alignItems: "flex-start" }}>
           {home.photoUrl && <img src={home.photoUrl} alt={`Photo of ${home.address}`} className="thumb" />}
           <span className="stack small" style={{ gap: 2 }}>
-            <span className="strong">{home.address}</span>
-            <span><span className="strong">{home.agent}</span> prefers {METHOD_LABEL[home.preferred] ?? home.preferred}.</span>
+            <HomeSnapshot home={{ address: home.address, city: home.city, photoUrl: home.photoUrl, beds: home.beds, baths: home.baths, sqft: home.sqft }} />
+            <span className="muted">{home.beds} bd · {home.baths} ba{home.sqft ? ` · ${home.sqft.toLocaleString()} sq ft` : ""}</span>
+            <span><span className="strong">{home.agent}</span> takes requests by {home.methods.map((m) => METHOD_LABEL[m] ?? m).join(" or ")}.</span>
             {home.instant && <span className="pill blue" style={{ alignSelf: "flex-start" }}>Instant approval</span>}
           </span>
         </div>
@@ -160,6 +162,12 @@ export function NewRequestForm({ homes, clients, defaultListing, defaultClient, 
           <label className="row small" style={{ cursor: "pointer" }}><input type="checkbox" name="saveBuyer" defaultChecked style={{ width: 20, height: 20 }} /> Save to my clients</label>
         </fieldset>
       )}
+
+      <div className="field">
+        <label htmlFor="comments">Comments for the listing agent (optional)</label>
+        <textarea id="comments" name="comments" className="input" maxLength={500} placeholder="e.g. Buyers are relocating from Atlanta; we may run 5 minutes late." />
+        <span className="tiny muted">Your name, license number, brokerage, phone and email are added automatically.</span>
+      </div>
 
       {state.error && <p className="error" role="alert">{state.error}</p>}
       <button className="btn primary lg block" disabled={pending || (!home && !typed)}>{pending ? "Sending…" : "Send request"}</button>

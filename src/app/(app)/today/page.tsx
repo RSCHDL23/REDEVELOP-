@@ -21,7 +21,8 @@ export default async function TodayPage() {
     ...requests.filter((x) => dateOf(x.startsAt) === today && x.status !== "cancelled" && x.status !== "declined").map((x) => ({
       key: x.id, minutes: minutesOfDay(x.startsAt), kind: x.direction === "sent" ? "Showing" : "Showing request", title: x.address,
       sub: x.direction === "sent" ? `${x.buyerLabel} · with ${x.otherAgentName}` : `${x.otherAgentName} wants to show it`,
-      status: x.status === "approved" ? "Confirmed" : x.direction === "incoming" ? "Approve" : "Pending", tone: x.status === "approved" ? "blue" : "amber", href: "/showings",
+      status: x.status === "approved" ? "Confirmed" : x.direction === "incoming" ? "Approve" : "Pending", tone: x.status === "approved" ? "blue" : "amber",
+      href: x.direction === "sent" && x.status === "approved" ? `/showings/${x.id}/visit` : x.direction === "sent" ? "/showings?tab=sent" : "/showings",
     })),
     ...deals.flatMap((d) => d.milestones.filter((m) => m.due === today && !m.done).map((m) => ({
       key: m.id, minutes: 24 * 60, kind: "Deal deadline", title: m.label, sub: d.address, status: "Due today", tone: "amber", href: `/deals/${d.id}`,

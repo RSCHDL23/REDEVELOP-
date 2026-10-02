@@ -9,6 +9,7 @@ import { formatClock, intersectAll, type Window } from "@/lib/core/time";
 import { deviceLink, draftsFor, type Draft, type Sender } from "@/lib/core/messages";
 import { prettyDate } from "@/lib/data/dates";
 import { sendTour, type SendTourState } from "./actions";
+import { HomeSnapshot } from "@/components/HomeSnapshot";
 
 const LENGTHS = [15, 30, 45];
 const METHOD_NAME: Record<string, string> = { app: "In app", text: "Text", email: "Email", call: "Call", online: "Online" };
@@ -22,6 +23,7 @@ export function TourBuilder({ ctx, sender }: { ctx: TourContext; sender: Sender 
   const [picked, setPicked] = useState<Set<string>>(() => new Set(ctx.homes.map((h) => h.listing.id)));
   const [length, setLength] = useState(30);
   const [plan, setPlan] = useState<TourPlan | null>(null);
+  const [comments, setComments] = useState("");
   const [state, action, sending] = useActionState<SendTourState, FormData>(sendTour, {});
 
   const party = useMemo(() => intersectAll(ctx.participants.map((p) => p.free)), [ctx]);
@@ -87,7 +89,7 @@ export function TourBuilder({ ctx, sender }: { ctx: TourContext; sender: Sender 
               <label className="row" style={{ cursor: "pointer", alignItems: "flex-start" }}>
                 <input type="checkbox" checked={picked.has(l.id)} onChange={() => toggle(l.id)} style={{ width: 22, height: 22, marginTop: 2 }} />
                 <span className="stack" style={{ gap: 1, flex: 1 }}>
-                  <span className="strong">{l.address}</span>
+                  <HomeSnapshot home={{ address: l.address, city: `${l.city}, ${l.state}`, photoUrl: l.photoUrl, beds: l.beds, baths: l.baths, sqft: l.sqft }} />
                   <span className="small muted">{l.beds} bd · {l.baths} ba · {l.listingAgent.name}</span>
                   <span className="tiny muted tabular">Can show {windowsLabel(free)}</span>
                 </span>
@@ -106,6 +108,11 @@ export function TourBuilder({ ctx, sender }: { ctx: TourContext; sender: Sender 
           ))}
         </div>
       </section>
+
+      <div className="field">
+        <label htmlFor="tour-comments">Note for listing agents (optional)</label>
+        <textarea id="tour-comments" className="input" maxLength={500} value={comments} onChange={(e) => setComments(e.target.value)} placeholder="Added to every request, e.g. Buyers are pre-approved with a 20% down payment." />
+      </div>
 
       <button type="button" className="btn primary lg block" onClick={build} disabled={picked.size === 0}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z" /></svg>
@@ -135,10 +142,10 @@ export function TourBuilder({ ctx, sender }: { ctx: TourContext; sender: Sender 
               const a = l.listingAgent;
               const drafts = draftsFor(
                 sender,
-                { listingAgentFirstName: a.name.split(" ")[0], address: l.address, dayLabel, timeLabel: `${formatClock(s.start)}–${formatClock(s.end)}`, buyerNames: ctx.clientLabel, preApproved: true },
+                { listingAgentFirstName: a.name.split(" ")[0], address: l.address, dayLabel, timeLabel: `${formatClock(s.start)}–${formatClock(s.end)}`, buyerNames: ctx.clientLabel, preApproved: true, comments: comments.trim() || undefined },
                 { phone: a.phone, email: a.email, onApp: a.onApp, onlineUrl: a.contact.onlineUrl },
               );
-              const preferred = a.onApp ? "app" : a.contact.preferred;
+              const preferred = a.onApp ? ["app"] : a.contact.methods;
               return (
                 <li key={s.homeId}>
                   <StopCard index={i + 1} address={l.address} time={`${formatClock(s.start)}–${formatClock(s.end)}`} drive={s.driveMinutes} wait={s.waitMinutes} agent={a.name} drafts={drafts} preferred={preferred} instant={l.instantShowings} />
@@ -155,6 +162,7 @@ export function TourBuilder({ ctx, sender }: { ctx: TourContext; sender: Sender 
                 value={JSON.stringify({
                   date: ctx.date,
                   buyerLabel: ctx.clientLabel,
+                  comments: comments.trim(),
                   stops: plan.stops.map((s) => {
                     const a = byId.get(s.homeId)!.listing.listingAgent;
                     return { listingId: s.homeId, start: s.start, end: s.end, method: a.onApp ? "app" : a.contact.preferred };
@@ -174,9 +182,9 @@ export function TourBuilder({ ctx, sender }: { ctx: TourContext; sender: Sender 
 }
 
 function StopCard({ index, address, time, drive, wait, agent, drafts, preferred, instant }: {
-  index: number; address: string; time: string; drive: number; wait: number; agent: string; drafts: Draft[]; preferred: string; instant: boolean;
+  index: number; address: string; time: string; drive: number; wait: number; agent: string; drafts: Draft[]; preferred: string[]; instant: boolean;
 }) {
-  const [method, setMethod] = useState(drafts.find((d) => d.method === preferred)?.method ?? drafts[0]?.method);
+  const [method, setMethod] = useState(drafts.find((d) => preferred.includes(d.method))?.method ?? drafts[0]?.method);
   const draft = drafts.find((d) => d.method === method);
   const link = draft ? deviceLink(draft) : null;
   return (
@@ -195,7 +203,7 @@ function StopCard({ index, address, time, drive, wait, agent, drafts, preferred,
           <div className="chips" role="group" aria-label="How to send">
             {drafts.map((d) => (
               <button key={d.method} type="button" className="chip" aria-pressed={d.method === method} onClick={() => setMethod(d.method)}>
-                {METHOD_NAME[d.method]}{d.method === preferred ? " ★" : ""}
+                {METHOD_NAME[d.method]}{preferred.includes(d.method) ? " ★" : ""}
               </button>
             ))}
           </div>

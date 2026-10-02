@@ -14,7 +14,10 @@ It's a phone-friendly web app. People can add it to their home screen like a reg
 | **Showings** | Color-coded cards (green confirmed, yellow new time, red declined, blue waiting) with home photos. On your listings: approve, decline, or suggest a new date and time, and change your answer later. On ones you requested: remind or resend in the listing agent's preferred way, accept a suggested time, or cancel |
 | **Request a showing** | Search homes from the MLS/FSBO list or type in an address that isn't listed, times in 5-minute steps, up to 3 hours long (for inspections), and pick a saved buyer or add a new one. Sends in each listing agent's preferred way (in app, text, email, call or their online scheduler) |
 | **Tour** | One tap fits every home around you, your buyers and each home's showing windows, in the shortest drive. Each stop gets a ready-to-send text, email or call script |
-| **Deals** | Every deal with progress and the next deadline. Each deal has dates (business days, skipping federal holidays), to-dos, people and lender loan updates |
+| **At the showing** | "I've arrived" lets the listing agent (for the owners) and your buyers know, then a quick feedback form, then directions to the next showing in your map app (Google, Apple or Waze) |
+| **Clients** | Present, Future (new leads, including people who connect through your link) and Past. Text, call, email, request a showing or start a deal from each client |
+| **My link & QR** | Every professional gets a public page (`/p/your-name`) and QR code. Clients scan it, fill in their info, and land in Clients → Future |
+| **Deals** | Create a deal from the contract dates; every milestone date fills in and can be changed. Checking off Closing sets off a celebration and sends your client their after-closing checklist by text or email. Every deal shows progress and the next deadline. Each deal has dates (business days, skipping federal holidays), to-dos, people and lender loan updates |
 | **Profile** | Headshot or profile photo, logo, tagline (80 characters), bio, photos of your work, **every license in every state** (each verified license turns on that profession's tools), how you want showing requests, weekly hours and security |
 
 ## Try it on your computer (no setup)
@@ -33,7 +36,7 @@ With no database connected, the app runs in **demo mode**: any email and passwor
 ## Go live with Supabase (database, sign-in, file storage)
 
 1. Create a free project at <https://supabase.com>.
-2. In the project, open **SQL Editor → New query**. Paste everything from `supabase/migrations/0001_init.sql` and click **Run**. Then do the same with `0002_showing_updates.sql`. Always run the files in number order; each new update adds a new numbered file. This creates the tables, the security rules and the photo folders.
+2. In the project, open **SQL Editor → New query**. Paste everything from `supabase/migrations/0001_init.sql` and click **Run**. Then do the same with `0002_showing_updates.sql` and `0003_clients_links_deals.sql`. Always run the files in number order; each new update adds a new numbered file. This creates the tables, the security rules and the photo folders.
 3. Open **Project Settings → API**. Copy the **Project URL** and the **anon public** key.
 4. In this folder, copy `.env.example` to a new file named `.env.local` and fill it in:
    ```

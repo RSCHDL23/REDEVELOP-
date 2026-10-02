@@ -4,8 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { hm, subtract, type Window } from "@/lib/core/time";
 import { contractMilestones } from "@/lib/core/deadlines";
 import type { Role } from "@/lib/core/access";
-import type { Repo } from "./repo";
-import type { AgentSummary, Client, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, TourContext, WeeklyHours } from "./types";
+import type { PublicProfile, Repo } from "./repo";
+import type { AgentSummary, Client, ClientStage, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, TourContext, WeeklyHours } from "./types";
 import { dateOf, minutesOfDay, toTimestamp, weekdayOf } from "./dates";
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -33,7 +33,7 @@ function toAgent(p: Row | null, prefs: Row | null): AgentSummary {
     email: p?.email ?? "",
     brokerage: p?.brokerages?.name ?? "",
     onApp: true,
-    contact: { preferred: prefs?.preferred ?? "app", textAfterCall: !!prefs?.text_after_call, onlineUrl: prefs?.online_scheduler_url ?? undefined },
+    contact: { preferred: prefs?.methods?.[0] ?? prefs?.preferred ?? "app", methods: prefs?.methods?.length ? prefs.methods : [prefs?.preferred ?? "app"], textAfterCall: !!prefs?.text_after_call, onlineUrl: prefs?.online_scheduler_url ?? undefined },
   };
 }
 
@@ -49,14 +49,14 @@ function toListing(r: Row): Listing {
 
 const AGENT_FIELDS = "id, full_name, phone, email, brokerages(name), contact_preferences(*)";
 const LISTING_SELECT = `*, agent:profiles!listings_listing_agent_id_fkey(${AGENT_FIELDS})`;
-const REQUEST_SELECT = `*, listing:listings(address, city, photo_url, listing_agent_id, agent:profiles!listings_listing_agent_id_fkey(${AGENT_FIELDS})), requester:profiles!showing_requests_requesting_agent_id_fkey(${AGENT_FIELDS})`;
+const REQUEST_SELECT = `*, feedback:showing_feedback(*), listing:listings(address, city, state, beds, baths, sqft, photo_url, listing_agent_id, agent:profiles!listings_listing_agent_id_fkey(${AGENT_FIELDS})), requester:profiles!showing_requests_requesting_agent_id_fkey(${AGENT_FIELDS})`;
 
 function toRequest(r: Row, uid: string): ShowingRequest {
   const sent = r.requesting_agent_id === uid;
   const typedIn = !r.listing_id;
   const other: AgentSummary = sent
     ? typedIn
-      ? { id: "", name: r.manual_agent_name || "Listing agent", phone: r.manual_agent_phone ?? "", email: r.manual_agent_email ?? "", brokerage: "", onApp: false, contact: { preferred: r.manual_agent_phone ? "text" : "email", textAfterCall: false } }
+      ? { id: "", name: r.manual_agent_name || "Listing agent", phone: r.manual_agent_phone ?? "", email: r.manual_agent_email ?? "", brokerage: "", onApp: false, contact: { preferred: r.manual_agent_phone ? "text" : "email", methods: r.manual_agent_phone ? ["text", "email"] : ["email"], textAfterCall: false } }
       : toAgent(r.listing?.agent ?? null, r.listing?.agent?.contact_preferences ?? null)
     : toAgent(r.requester ?? null, r.requester?.contact_preferences ?? null);
   return {
@@ -65,6 +65,24 @@ function toRequest(r: Row, uid: string): ShowingRequest {
     startsAt: r.starts_at, endsAt: r.ends_at, status: r.status, direction: sent ? "sent" : "incoming",
     proposedStartsAt: r.proposed_starts_at, proposedEndsAt: r.proposed_ends_at, responseNote: r.response_note ?? "",
     remindedAt: r.reminded_at, reminderCount: Number(r.reminder_count ?? 0),
+    comments: r.comments ?? "", arrivedAt: r.arrived_at ?? null, clientId: r.client_id ?? null,
+    feedback: toFeedback(Array.isArray(r.feedback) ? r.feedback[0] : r.feedback),
+    home: {
+      address: r.listing?.address ?? r.manual_address ?? "", city: r.listing ? `${r.listing.city}, ${r.listing.state}` : "",
+      photoUrl: r.listing?.photo_url ?? null, beds: r.listing?.beds ?? null, baths: r.listing?.baths ?? null, sqft: r.listing?.sqft ?? null,
+    },
+  };
+}
+
+function toFeedback(f: Row | null | undefined) {
+  if (!f) return null;
+  return { rating: Number(f.overall ?? 0), interest: f.interest ?? "maybe", nextStep: f.next_step ?? "none", comments: f.comments ?? "", questions: f.questions ?? "" };
+}
+
+function toClient(r: Row): Client {
+  return {
+    id: r.id, name: r.name, phone: r.phone ?? "", email: r.email ?? "", preApproved: r.pre_approved,
+    stage: r.stage ?? "present", source: r.source ?? "manual", intent: r.intent ?? "", notes: r.notes ?? "", createdAt: r.created_at,
   };
 }
 
@@ -76,6 +94,7 @@ export const supabaseRepo: Repo = {
       id: p.id, fullName: p.full_name, email: p.email ?? "", phone: p.phone ?? "", tagline: p.tagline ?? "", bio: p.bio ?? "",
       headshotUrl: publicUrl(supabase, "avatars", p.headshot_path), logoUrl: publicUrl(supabase, "logos", p.logo_path),
       brokerage: p.brokerages?.name ?? "", serviceAreas: p.service_areas ?? [], selfRoles: p.self_roles ?? [],
+      slug: p.slug ?? "", websites: Array.isArray(p.websites) ? p.websites : [], mapApp: p.map_app ?? "google",
     } satisfies Profile;
   },
   async updateMe(patch) {
@@ -86,6 +105,8 @@ export const supabaseRepo: Repo = {
     if (patch.tagline !== undefined) row.tagline = patch.tagline.slice(0, 80);
     if (patch.bio !== undefined) row.bio = patch.bio;
     if (patch.selfRoles !== undefined) row.self_roles = patch.selfRoles;
+    if (patch.websites !== undefined) row.websites = patch.websites.slice(0, 8);
+    if (patch.mapApp !== undefined) row.map_app = patch.mapApp;
     // For uploads, headshotUrl and logoUrl carry the storage path of the new file.
     if (patch.headshotUrl !== undefined) row.headshot_path = patch.headshotUrl;
     if (patch.logoUrl !== undefined) row.logo_path = patch.logoUrl;
@@ -96,11 +117,12 @@ export const supabaseRepo: Repo = {
   async getContactPreference() {
     const { supabase, uid } = await session();
     const r = check(await supabase.from("contact_preferences").select("*").eq("profile_id", uid).maybeSingle()) as Row | null;
-    return { preferred: r?.preferred ?? "app", textAfterCall: !!r?.text_after_call, onlineUrl: r?.online_scheduler_url ?? undefined } satisfies ContactPreference;
+    const methods = r?.methods?.length ? r.methods : [r?.preferred ?? "app"];
+    return { preferred: methods[0], methods, textAfterCall: !!r?.text_after_call, onlineUrl: r?.online_scheduler_url ?? undefined } satisfies ContactPreference;
   },
   async saveContactPreference(pref) {
     const { supabase, uid } = await session();
-    check(await supabase.from("contact_preferences").update({ preferred: pref.preferred, text_after_call: pref.textAfterCall, online_scheduler_url: pref.onlineUrl ?? null }).eq("profile_id", uid));
+    check(await supabase.from("contact_preferences").update({ preferred: pref.methods[0] ?? pref.preferred, methods: pref.methods, text_after_call: pref.textAfterCall, online_scheduler_url: pref.onlineUrl ?? null }).eq("profile_id", uid));
   },
 
   async listPortfolio() {
@@ -180,18 +202,55 @@ export const supabaseRepo: Repo = {
       starts_at: input.startsAt, ends_at: input.endsAt, method: input.method,
       manual_address: input.manual?.address ?? null, manual_agent_name: input.manual?.agentName || null,
       manual_agent_phone: input.manual?.agentPhone || null, manual_agent_email: input.manual?.agentEmail || null,
+      comments: input.comments?.slice(0, 500) || null,
     }).select(REQUEST_SELECT).single()) as Row;
+    if (input.clientId) await supabase.from("clients").update({ stage: "present" }).eq("id", input.clientId).eq("stage", "future");
     return toRequest(row, uid);
+  },
+  async markArrived(id) {
+    const { supabase } = await session();
+    check(await supabase.from("showing_requests").update({ arrived_at: new Date().toISOString() }).eq("id", id));
+  },
+  async submitFeedback(id, f) {
+    const { supabase, uid } = await session();
+    check(await supabase.from("showing_feedback").upsert({
+      request_id: id, buyer_agent_id: uid, overall: f.rating, interest: f.interest, next_step: f.nextStep,
+      comments: f.comments.slice(0, 1000) || null, questions: f.questions.slice(0, 500) || null, status: "sent",
+    }, { onConflict: "request_id" }));
   },
   async listClients() {
     const { supabase, uid } = await session();
     const rows = check(await supabase.from("clients").select("*").eq("agent_id", uid).order("name")) as Row[];
-    return rows.map((r) => ({ id: r.id, name: r.name, phone: r.phone ?? "", email: r.email ?? "", preApproved: r.pre_approved }) satisfies Client);
+    return rows.map(toClient);
   },
   async addClient(input) {
     const { supabase, uid } = await session();
-    const r = check(await supabase.from("clients").insert({ agent_id: uid, name: input.name, phone: input.phone || null, email: input.email || null, pre_approved: input.preApproved }).select("*").single()) as Row;
-    return { id: r.id, name: r.name, phone: r.phone ?? "", email: r.email ?? "", preApproved: r.pre_approved };
+    const r = check(await supabase.from("clients").insert({
+      agent_id: uid, name: input.name, phone: input.phone || null, email: input.email || null, pre_approved: input.preApproved,
+      stage: input.stage ?? "present", notes: input.notes || null, intent: input.intent || null,
+    }).select("*").single()) as Row;
+    return toClient(r);
+  },
+  async setClientStage(id, stage: ClientStage) {
+    const { supabase } = await session();
+    check(await supabase.from("clients").update({ stage }).eq("id", id));
+  },
+  async getPublicProfile(slug) {
+    // Works without signing in: the database function returns only safe fields.
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("public_profile", { p_slug: slug });
+    if (error || !data) return null;
+    const p = data as Row;
+    return {
+      slug: p.slug, fullName: p.full_name, tagline: p.tagline ?? "", bio: p.bio ?? "", phone: p.phone ?? "", email: p.email ?? "",
+      headshotUrl: publicUrl(supabase, "avatars", p.headshot_path), logoUrl: publicUrl(supabase, "logos", p.logo_path),
+      brokerage: p.brokerage ?? "", websites: p.websites ?? [], licenses: p.licenses ?? [],
+    } satisfies PublicProfile;
+  },
+  async connectToPro(slug, input) {
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("connect_to_pro", { p_slug: slug, p_name: input.name, p_phone: input.phone, p_email: input.email, p_intent: input.intent, p_consent: true });
+    if (error) throw new Error(error.message);
   },
 
   async getTourContext(date) {
@@ -220,14 +279,47 @@ export const supabaseRepo: Repo = {
   },
 
   async listDeals() {
-    const { supabase } = await session();
+    const { supabase, uid } = await session();
     const rows = check(await supabase.from("deals").select("*, deal_members(*), milestones(*), deal_tasks(*), loan_updates(*, author:profiles(full_name))").order("closing_date")) as Row[];
-    return rows.map(toDeal);
+    return rows.map((r) => toDeal(r, uid));
   },
   async getDeal(id) {
-    const { supabase } = await session();
+    const { supabase, uid } = await session();
     const row = check(await supabase.from("deals").select("*, deal_members(*), milestones(*), deal_tasks(*), loan_updates(*, author:profiles(full_name))").eq("id", id).maybeSingle()) as Row | null;
-    return row ? toDeal(row) : null;
+    return row ? toDeal(row, uid) : null;
+  },
+  async createDeal(input) {
+    const { supabase, uid } = await session();
+    const me = check(await supabase.from("profiles").select("full_name, phone, email").eq("id", uid).single()) as Row;
+    const client = input.clientId ? (check(await supabase.from("clients").select("*").eq("id", input.clientId).maybeSingle()) as Row | null) : null;
+    const deal = check(await supabase.from("deals").insert({
+      property_address: input.address, city: input.city, side: input.side, acceptance_date: input.acceptanceDate, closing_date: input.closingDate,
+      loan_type: input.loanType, created_by: uid, client_id: input.clientId ?? null, has_hoa: input.hasHoa,
+    }).select("id").single()) as Row;
+    const agentRole = input.side === "seller" ? "listing_agent" : "buyers_agent";
+    check(await supabase.from("deal_members").insert([
+      { deal_id: deal.id, profile_id: uid, role: agentRole, display_name: me.full_name, phone: me.phone, email: me.email },
+      { deal_id: deal.id, profile_id: null, role: input.side === "seller" ? "seller" : "buyer", display_name: input.clientName, phone: client?.phone ?? null, email: client?.email ?? null },
+    ]));
+    check(await supabase.from("milestones").insert(input.milestones.map((m, i) => ({ deal_id: deal.id, kind: m.kind, label: m.label, due_date: m.due, position: i }))));
+    if (input.clientId) await supabase.from("clients").update({ stage: "present" }).eq("id", input.clientId).eq("stage", "future");
+    return deal.id as string;
+  },
+  async setMilestoneDate(dealId, milestoneId, due) {
+    const { supabase } = await session();
+    let kind: string;
+    if (milestoneId.startsWith("calc-")) {
+      // Save the computed dates first, with this one changed.
+      const d = check(await supabase.from("deals").select("acceptance_date, closing_date, loan_type").eq("id", dealId).single()) as Row;
+      const pick = Number(milestoneId.slice(5));
+      const list = contractMilestones({ acceptance: d.acceptance_date, closing: d.closing_date, mortgageContingencyDays: d.loan_type === "cash" ? undefined : 21 });
+      kind = list[pick]?.kind ?? "";
+      check(await supabase.from("milestones").insert(list.map((m, i) => ({ deal_id: dealId, kind: m.kind, label: m.label, due_date: i === pick ? due : m.due, position: i }))));
+    } else {
+      const m = check(await supabase.from("milestones").update({ due_date: due }).eq("id", milestoneId).eq("deal_id", dealId).select("kind").single()) as Row;
+      kind = m.kind;
+    }
+    if (kind === "closing") check(await supabase.from("deals").update({ closing_date: due }).eq("id", dealId));
   },
   async toggleTask(dealId, taskId) {
     const { supabase } = await session();
@@ -245,8 +337,13 @@ export const supabaseRepo: Repo = {
       check(await supabase.from("milestones").insert(rows));
       return;
     }
-    const m = check(await supabase.from("milestones").select("done_at").eq("id", milestoneId).eq("deal_id", dealId).single()) as Row;
+    const m = check(await supabase.from("milestones").select("done_at, kind").eq("id", milestoneId).eq("deal_id", dealId).single()) as Row;
     check(await supabase.from("milestones").update({ done_at: m.done_at ? null : new Date().toISOString() }).eq("id", milestoneId));
+    if (m.kind === "closing") {
+      // Closing day: the client moves to Past (or back, if un-checked).
+      const d = check(await supabase.from("deals").select("client_id").eq("id", dealId).single()) as Row;
+      if (d.client_id) await supabase.from("clients").update({ stage: m.done_at ? "present" : "past" }).eq("id", d.client_id);
+    }
   },
   async postLoanUpdate(dealId, status, note) {
     const { supabase, uid } = await session();
@@ -269,7 +366,7 @@ export const supabaseRepo: Repo = {
   },
 };
 
-function toDeal(r: Row): Deal {
+function toDeal(r: Row, uid: string): Deal {
   const members = (r.deal_members ?? []) as Row[];
   const client = members.find((m) => m.role === "buyer" || m.role === "seller");
   const milestones = (r.milestones ?? []).length
@@ -280,14 +377,16 @@ function toDeal(r: Row): Deal {
   return {
     id: r.id,
     address: r.property_address,
-    city: "",
+    city: r.city ?? "",
     side: r.side,
     stage: r.stage.replace(/_/g, " "),
     acceptanceDate: r.acceptance_date ?? "",
     closingDate: r.closing_date ?? "",
     loanType: r.loan_type ?? "",
     clientName: client?.display_name ?? "",
-    members: members.map((m) => ({ role: m.role as Role, name: m.display_name, phone: m.phone ?? undefined, email: m.email ?? undefined })),
+    clientId: r.client_id ?? null,
+    hasHoa: !!r.has_hoa,
+    members: members.map((m) => ({ role: m.role as Role, name: m.display_name, phone: m.phone ?? undefined, email: m.email ?? undefined, isYou: m.profile_id === uid })),
     milestones,
     tasks: ((r.deal_tasks ?? []) as Row[]).map((t) => ({ id: t.id, title: t.title, assignee: t.assignee_label ?? "", due: t.due_date, done: t.done })),
     loanUpdates: ((r.loan_updates ?? []) as Row[])

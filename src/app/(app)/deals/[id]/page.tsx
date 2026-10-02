@@ -6,7 +6,9 @@ import { prettyDate, todayISO } from "@/lib/data/dates";
 import { daysUntil } from "@/lib/core/deadlines";
 import { can, needsDualRoleDisclosure, rolesFor } from "@/lib/core/access";
 import { BackLink, Initials } from "@/components/ui";
-import { postLoanUpdate, toggleMilestone, toggleTask } from "../actions";
+import { postLoanUpdate, setMilestoneDate, toggleMilestone, toggleTask } from "../actions";
+import { checklistMessage, greetingName, type ClosingSide } from "@/lib/core/closing";
+import { Celebration } from "./Celebration";
 
 export const metadata: Metadata = { title: "Deal" };
 
@@ -25,8 +27,8 @@ const ROLE_NAME: Record<string, string> = {
 
 const LOAN_STATUSES = ["Application received", "Appraisal ordered", "Appraisal in", "Conditional approval", "Clear to close", "Docs sent to title", "Funded"];
 
-export default async function DealPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
-  const [{ id }, { tab = "dates" }] = await Promise.all([params, searchParams]);
+export default async function DealPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; celebrate?: string }> }) {
+  const [{ id }, { tab = "dates", celebrate }] = await Promise.all([params, searchParams]);
   const r = repo();
   const [deal, licenses, me] = await Promise.all([r.getDeal(id), r.listLicenses(), r.getMe()]);
   if (!deal) notFound();
@@ -36,9 +38,21 @@ export default async function DealPage({ params, searchParams }: { params: Promi
   const myDealRoles = deal.members.filter((m) => m.isYou).map((m) => m.role);
   const current = TABS.find((t) => t.id === tab)?.id ?? "dates";
   const toClose = daysUntil(today, deal.closingDate);
+  const sides: ClosingSide[] = deal.side === "both" ? ["buyer", "seller"] : [deal.side];
+  const showCelebration = celebrate === "1" && deal.milestones.some((m) => m.kind === "closing" && m.done);
+  const client = showCelebration && deal.clientId ? (await r.listClients()).find((c) => c.id === deal.clientId) : undefined;
+  const celebration = showCelebration
+    ? sides.map((side) => {
+        const person = deal.members.find((m) => m.role === side && !m.isYou);
+        const name = person?.name ?? deal.clientName;
+        const useClient = !person || person.name === client?.name;
+        return { side, clientName: name, phone: person?.phone || (useClient ? client?.phone : undefined) || undefined, email: person?.email || (useClient ? client?.email : undefined) || undefined, body: checklistMessage({ clientFirstName: greetingName(name), address: deal.address, side, agentName: me.fullName, agentPhone: me.phone }) };
+      })
+    : null;
 
   return (
     <main className="page">
+      {celebration && <Celebration address={deal.address} dealId={deal.id} messages={celebration} />}
       <BackLink href="/deals" label="Deals" />
       <header className="stack" style={{ gap: 4 }}>
         <h1 className="page-title">{deal.address}</h1>
@@ -74,11 +88,20 @@ export default async function DealPage({ params, searchParams }: { params: Promi
                     {m.done ? "✓" : ""}
                   </button>
                   <span className="stack" style={{ gap: 1, flex: 1 }}>
-                    <span className="strong" style={{ textDecoration: m.done ? "line-through" : undefined }}>{m.label}</span>
+                    <span className="strong" style={{ textDecoration: m.done ? "line-through" : undefined }}>{m.label}{m.kind === "closing" && !m.done ? " 🎉" : ""}</span>
                     <span className="small muted tabular">{prettyDate(m.due)}</span>
                   </span>
                   {!m.done && <span className={`pill ${left < 0 ? "red" : left <= 3 ? "amber" : ""}`}>{left < 0 ? "Overdue" : left === 0 ? "Today" : `${left} days`}</span>}
                 </form>
+                <details style={{ marginTop: 6, marginLeft: 54 }}>
+                  <summary className="tiny strong" style={{ cursor: "pointer", color: "var(--blue-text)", minHeight: 24 }}>Change date</summary>
+                  <form action={setMilestoneDate} className="row" style={{ marginTop: 6 }}>
+                    <input type="hidden" name="dealId" value={deal.id} />
+                    <input type="hidden" name="itemId" value={m.id} />
+                    <input type="date" name="due" className="input" defaultValue={m.due} aria-label={`New date for ${m.label}`} style={{ minHeight: 40, flex: 1 }} required />
+                    <button className="btn dark" style={{ minHeight: 40 }}>Save</button>
+                  </form>
+                </details>
               </li>
             );
           })}

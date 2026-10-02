@@ -14,6 +14,17 @@ export interface Profile {
   brokerage: string;
   serviceAreas: string[];
   selfRoles: Role[];
+  /** Personal link: /p/{slug} */
+  slug: string;
+  websites: Website[];
+  mapApp: MapApp;
+}
+
+export type MapApp = "google" | "apple" | "waze";
+
+export interface Website {
+  label: string;
+  url: string;
 }
 
 export interface License {
@@ -28,7 +39,10 @@ export interface License {
 }
 
 export interface ContactPreference {
+  /** The first choice. Always equal to methods[0]. */
   preferred: ContactMethod;
+  /** Every way this professional accepts showing requests, in order of preference. */
+  methods: ContactMethod[];
   textAfterCall: boolean;
   onlineUrl?: string;
 }
@@ -69,12 +83,38 @@ export interface Listing {
 }
 
 /** A buyer (or other client) saved to an agent's profile. */
+export type ClientStage = "future" | "present" | "past";
+
 export interface Client {
   id: string;
   name: string;
   phone: string;
   email: string;
   preApproved: boolean;
+  /** Future: new lead. Present: actively working together. Past: closed. */
+  stage: ClientStage;
+  source: "manual" | "link" | "deal";
+  intent: string;
+  notes: string;
+  createdAt: string;
+}
+
+/** What pops up when you tap an address. */
+export interface HomeSnapshot {
+  address: string;
+  city: string;
+  photoUrl: string | null;
+  beds: number | null;
+  baths: number | null;
+  sqft: number | null;
+}
+
+export interface ShowingFeedback {
+  rating: number;
+  interest: "very" | "maybe" | "not";
+  nextStep: "none" | "second_showing" | "offer";
+  comments: string;
+  questions: string;
 }
 
 export type RequestStatus = "pending" | "approved" | "declined" | "countered" | "cancelled";
@@ -99,6 +139,11 @@ export interface ShowingRequest {
   responseNote: string;
   remindedAt: string | null;
   reminderCount: number;
+  comments: string;
+  arrivedAt: string | null;
+  feedback: ShowingFeedback | null;
+  clientId: string | null;
+  home: HomeSnapshot;
 }
 
 export interface Person {
@@ -160,6 +205,8 @@ export interface Deal {
   closingDate: string;
   loanType: string;
   clientName: string;
+  clientId: string | null;
+  hasHoa: boolean;
   members: DealMember[];
   milestones: Milestone[];
   tasks: DealTask[];

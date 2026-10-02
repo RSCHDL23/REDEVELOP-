@@ -191,3 +191,16 @@ describe("reminders and resends", () => {
     expect(nudgeDraft("remind", s, d, { preferred: "call", phone: "8475550119" }).method).toBe("call");
   });
 });
+
+import { checklistMessage, greetingName } from "./closing";
+describe("after-closing checklist", () => {
+  it("congratulates and lists every step", () => {
+    const m = checklistMessage({ clientFirstName: "Ana", address: "6120 S Kenwood Ave", side: "buyer", agentName: "Donna White", agentPhone: "(708) 555-0123" });
+    expect(m).toContain("Congratulations, Ana!");
+    expect(m).toContain("9. Ignore mail");
+    expect(checklistMessage({ clientFirstName: "Tom", address: "x", side: "seller", agentName: "D", agentPhone: "1" })).toContain("officially sold");
+    expect(greetingName("The Sandovals")).toBe("The Sandovals");
+    expect(greetingName("Grace & Tom Ward")).toBe("Grace & Tom");
+    expect(greetingName("Ana Price")).toBe("Ana");
+  });
+});

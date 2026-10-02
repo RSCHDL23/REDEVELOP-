@@ -6,9 +6,13 @@ import { effectiveAccess, LICENSE_ROLES, PROFESSION_LABELS, rolesFor, type Featu
 import { prettyDate } from "@/lib/data/dates";
 import { Initials } from "@/components/ui";
 import { ImageUpload } from "./ImageUpload";
-import { ContactForm, DetailsForm, LicenseForm } from "./Forms";
+import QRCode from "qrcode";
+import { appOrigin } from "@/lib/server/origin";
+import { MAP_APPS } from "@/lib/data/requestMessages";
+import { ContactForm, DetailsForm, LicenseForm, WebsitesForm } from "./Forms";
+import { LinkShare } from "./LinkShare";
 import { MfaSetup } from "./MfaSetup";
-import { removeLicense, removeWork } from "./actions";
+import { removeLicense, removeWork, saveMapApp } from "./actions";
 
 export const metadata: Metadata = { title: "Profile" };
 
@@ -42,6 +46,8 @@ export default async function ProfilePage() {
   const isPro = licenses.length > 0 || roles.some((x) => !CLIENT_ROLES.includes(x));
   const access = effectiveAccess(roles);
   const features = (Object.keys(FEATURE_NAME) as Feature[]).filter((f) => access[f]);
+  const myUrl = `${await appOrigin()}/p/${me.slug}`;
+  const qrSvg = isPro && me.slug ? await QRCode.toString(myUrl, { type: "svg", margin: 1, errorCorrectionLevel: "M", color: { dark: "#0b0d0e", light: "#ffffff" } }) : "";
 
   return (
     <main className="page">
@@ -68,6 +74,14 @@ export default async function ProfilePage() {
           </div>
         )}
       </section>
+
+      {isPro && me.slug && (
+        <section className="stack" id="my-link">
+          <h2 className="section-label">My link &amp; QR code</h2>
+          <LinkShare url={myUrl} qrSvg={qrSvg} name={me.fullName} />
+          {!licenses.some((l) => l.status === "verified") && <p className="notice amber small">Your public page goes live once one of your licenses is verified.</p>}
+        </section>
+      )}
 
       <section className="stack">
         <h2 className="section-label">Your details</h2>
@@ -135,6 +149,13 @@ export default async function ProfilePage() {
 
       {isPro && (
         <section className="stack">
+          <h2 className="section-label">My websites</h2>
+          <WebsitesForm websites={me.websites} />
+        </section>
+      )}
+
+      {isPro && (
+        <section className="stack">
           <h2 className="section-label">Showing requests</h2>
           <ContactForm pref={pref} />
         </section>
@@ -146,6 +167,16 @@ export default async function ProfilePage() {
           <span className="stack" style={{ gap: 0 }}><span className="strong">Weekly hours</span><span className="tiny muted">When you can show homes or meet</span></span>
           <span aria-hidden="true">›</span>
         </Link>
+        <form action={saveMapApp} className="card">
+          <label htmlFor="mapApp" className="strong">Directions open in</label>
+          <span className="tiny muted">Used for &ldquo;next showing&rdquo; directions after you leave feedback.</span>
+          <div className="row">
+            <select id="mapApp" name="mapApp" className="input" defaultValue={me.mapApp} style={{ flex: 1 }}>
+              {MAP_APPS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+            <button className="btn dark">Save</button>
+          </div>
+        </form>
       </section>
 
       <section className="stack">

@@ -16,8 +16,11 @@ export default async function DealsPage() {
 
   return (
     <main className="page">
-      <h1 className="page-title">Deals</h1>
-      {sorted.length === 0 && <Empty>No deals under contract yet.</Empty>}
+      <header className="between">
+        <h1 className="page-title">Deals</h1>
+        <Link href="/deals/new" className="btn primary">+ New deal</Link>
+      </header>
+      {sorted.length === 0 && <Empty>No deals under contract yet. Tap + New deal when an offer is accepted.</Empty>}
       {sorted.map((d) => {
         const done = d.milestones.filter((m) => m.done).length;
         const next = d.milestones.filter((m) => !m.done).sort((a, b) => a.due.localeCompare(b.due))[0];

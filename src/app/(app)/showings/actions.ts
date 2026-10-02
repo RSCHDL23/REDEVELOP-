@@ -85,6 +85,7 @@ const newRequest = z.object({
   buyerPhone: z.string().trim().max(30).optional().default(""),
   buyerEmail: z.string().trim().max(120).optional().default(""),
   saveBuyer: z.string().optional(),
+  comments: z.string().trim().max(500).optional().default(""),
   preApproved: z.string().optional(),
 });
 
@@ -143,12 +144,39 @@ export async function createRequest(_prev: NewRequestState, formData: FormData):
     startsAt: toTimestamp(f.date, start),
     endsAt: toTimestamp(f.date, start + f.minutes),
     method,
+    comments: f.comments || undefined,
   });
   refresh();
 
   if (method === "app") redirect("/showings?tab=sent");
 
   // Not on REschedule: hand back a ready-to-send message.
-  const me = await r.getMe();
-  return { send: sendLinkFor(created, me, preApproved) };
+  const [me, licenses] = await Promise.all([r.getMe(), r.listLicenses()]);
+  return { send: sendLinkFor(created, me, preApproved, licenses) };
+}
+
+// ---------- At the showing ----------
+export async function arrive(id: string): Promise<ActionState> {
+  if (!id) return { error: "Something went wrong." };
+  await repo().markArrived(id);
+  refresh();
+  return { ok: "Arrived." };
+}
+
+const feedbackSchema = z.object({
+  id: z.string().min(1),
+  rating: z.coerce.number().int().min(1, "Pick a star rating.").max(5),
+  interest: z.enum(["very", "maybe", "not"], { message: "Pick how interested your buyers are." }),
+  nextStep: z.enum(["none", "second_showing", "offer"]).default("none"),
+  comments: z.string().trim().max(1000).optional().default(""),
+  questions: z.string().trim().max(500).optional().default(""),
+});
+
+export async function sendFeedback(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = feedbackSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the form." };
+  const { id, ...f } = parsed.data;
+  await repo().submitFeedback(id, f);
+  refresh();
+  return { ok: "Feedback sent." };
 }

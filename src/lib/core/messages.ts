@@ -9,6 +9,9 @@ export interface Sender {
   name: string;
   brokerage: string;
   phone: string;
+  email?: string;
+  /** e.g. "IL 475.123456" */
+  licenseId?: string;
 }
 
 export interface RequestDetails {
@@ -18,6 +21,8 @@ export interface RequestDetails {
   timeLabel: string; // "1:00–1:30 PM"
   buyerNames: string;
   preApproved: boolean;
+  /** Extra notes typed by the agent. */
+  comments?: string;
 }
 
 export interface Draft {
@@ -30,33 +35,48 @@ export interface Draft {
 
 const buyers = (d: RequestDetails) => `${d.preApproved ? "pre-approved buyers" : "buyers"}, ${d.buyerNames}`;
 
+const who = (s: Sender) => `${s.name}${s.licenseId ? ` (lic. ${s.licenseId})` : ""} with ${s.brokerage}`;
+const contactLine = (s: Sender) => [s.phone, s.email].filter(Boolean).join(" · ");
+
 export function textRequest(s: Sender, d: RequestDetails): string {
-  return `Hi ${d.listingAgentFirstName}, this is ${s.name} with ${s.brokerage}. I would like to show ${d.address} on ${d.dayLabel} from ${d.timeLabel} to my ${buyers(d)}. Does that time work? Thank you! ${s.phone}`;
+  return [
+    `Hi ${d.listingAgentFirstName}, this is ${who(s)}. I would like to show ${d.address} on ${d.dayLabel} from ${d.timeLabel} to my ${buyers(d)}. Does that time work?`,
+    d.comments ? `Note: ${d.comments}` : "",
+    `Thank you! ${contactLine(s)}`,
+  ].filter(Boolean).join(" ");
 }
 
 export function emailRequest(s: Sender, d: RequestDetails): { subject: string; body: string } {
+  const lines: (string | null)[] = [
+    `Hi ${d.listingAgentFirstName},`,
+    "",
+    `I would like to schedule a showing of ${d.address} for my ${buyers(d)}.`,
+    "",
+    `Property: ${d.address}`,
+    `Date: ${d.dayLabel}`,
+    `Time: ${d.timeLabel}`,
+    `Buyers: ${d.buyerNames}${d.preApproved ? " (pre-approved, letter attached)" : ""}`,
+    "",
+    `Requesting agent: ${s.name}`,
+    s.licenseId ? `License #: ${s.licenseId}` : null,
+    `Brokerage: ${s.brokerage}`,
+    `Phone: ${s.phone}`,
+    s.email ? `Email: ${s.email}` : null,
+    ...(d.comments ? ["", `Comments: ${d.comments}`] : []),
+    "",
+    "Please confirm, or suggest another time that works for your sellers.",
+    "",
+    "Thank you,",
+    s.name,
+  ];
   return {
     subject: `Showing request: ${d.address} · ${d.dayLabel}, ${d.timeLabel}`,
-    body: [
-      `Hi ${d.listingAgentFirstName},`,
-      "",
-      `I would like to schedule a showing of ${d.address} for my ${buyers(d)}.`,
-      "",
-      `Requested time: ${d.dayLabel}, ${d.timeLabel}`,
-      d.preApproved ? "Pre-approval letter attached." : "",
-      "",
-      "Please let me know if that works or suggest another time.",
-      "",
-      s.name,
-      `${s.brokerage} · ${s.phone}`,
-    ]
-      .filter((line, i, all) => !(line === "" && all[i - 1] === ""))
-      .join("\n"),
+    body: lines.filter((l): l is string => l !== null).join("\n"),
   };
 }
 
 export function callScript(s: Sender, d: RequestDetails): string {
-  return `Hi ${d.listingAgentFirstName}, it is ${s.name} with ${s.brokerage}. I am calling to request a showing at ${d.address} on ${d.dayLabel}, ${d.timeLabel}, for my ${buyers(d)}. Is that time open, and are there any access instructions?`;
+  return `Hi ${d.listingAgentFirstName}, it is ${who(s)}. I am calling to request a showing at ${d.address} on ${d.dayLabel}, ${d.timeLabel}, for my ${buyers(d)}. Is that time open, and are there any access instructions?`;
 }
 
 export function draftsFor(s: Sender, d: RequestDetails, contact: { phone?: string; email?: string; onApp?: boolean; onlineUrl?: string }): Draft[] {
@@ -124,7 +144,7 @@ export interface AgentContact {
 }
 
 export function reminderText(s: Sender, d: RequestDetails): string {
-  return `Hi ${d.listingAgentFirstName}, it's ${s.name} with ${s.brokerage} following up on my showing request for ${d.address} on ${d.dayLabel}, ${d.timeLabel}, for my ${buyers(d)}. Could you confirm when you get a chance? Thank you! ${s.phone}`;
+  return `Hi ${d.listingAgentFirstName}, it's ${who(s)} following up on my showing request for ${d.address} on ${d.dayLabel}, ${d.timeLabel}, for my ${buyers(d)}. Could you confirm when you get a chance? Thank you! ${s.phone}`;
 }
 
 export function reminderEmail(s: Sender, d: RequestDetails): { subject: string; body: string } {

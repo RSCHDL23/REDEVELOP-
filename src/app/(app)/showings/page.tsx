@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { repo } from "@/lib/data";
 import type { RequestStatus, ShowingRequest } from "@/lib/data/types";
-import { dateOf, minutesOfDay, prettyDate } from "@/lib/data/dates";
+import { dateOf, minutesOfDay, prettyDate, todayISO } from "@/lib/data/dates";
+import { HomeSnapshot } from "@/components/HomeSnapshot";
 import { nudgeFor } from "@/lib/data/requestMessages";
 import { formatClock } from "@/lib/core/time";
 import { Empty } from "@/components/ui";
@@ -50,7 +51,8 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
   const { tab = "incoming", show = "all" } = await searchParams;
   const view = tab === "sent" ? "sent" : "incoming";
   const r = repo();
-  const [all, me] = await Promise.all([r.listRequests(), r.getMe()]);
+  const [all, me, licenses] = await Promise.all([r.listRequests(), r.getMe(), r.listLicenses()]);
+  const today = todayISO();
   const mine = all.filter((x) => x.direction === view).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   const filter = FILTERS.some((f) => f.id === show) ? show : "all";
   const shown = filter === "all" ? mine.filter((x) => x.status !== "cancelled") : mine.filter((x) => x.status === filter);
@@ -97,14 +99,15 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
       {shown.map((x) => {
         const s = STATUS[x.status];
         const agentFirst = x.otherAgent.name.split(" ")[0] || "the listing agent";
-        const remind = view === "sent" ? nudgeFor("remind", x, me) : null;
-        const resend = view === "sent" ? nudgeFor("resend", x, me) : null;
+        const remind = view === "sent" ? nudgeFor("remind", x, me, licenses) : null;
+        const resend = view === "sent" ? nudgeFor("resend", x, me, licenses) : null;
+        const canStart = view === "sent" && x.status === "approved" && dateOf(x.startsAt) <= today;
         return (
           <article key={x.id} className={`card status-card status-${x.status}`} aria-label={`${x.address}, ${s.label}`}>
             <div className="row" style={{ alignItems: "flex-start" }}>
               <Photo r={x} />
               <div className="stack" style={{ gap: 2, flex: 1, minWidth: 0 }}>
-                <span className="strong">{x.address}</span>
+                <HomeSnapshot home={x.home} />
                 <span className="small tabular strong">{when(x.startsAt, x.endsAt)}</span>
                 <span className="small muted">
                   {view === "incoming" ? `${x.otherAgent.name} · ${x.buyerLabel}` : `${x.buyerLabel} · ${x.otherAgent.name}`}
@@ -120,6 +123,21 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
               </p>
             )}
             {x.responseNote && <p className="small" style={{ margin: 0 }}>&ldquo;{x.responseNote}&rdquo;</p>}
+            {(x.arrivedAt || x.feedback) && (
+              <div className="chips">
+                {x.arrivedAt && <span className="pill solid">📍 Arrived {formatClock(minutesOfDay(x.arrivedAt))}</span>}
+                {x.feedback && <span className="pill solid">{"★".repeat(x.feedback.rating)} · {x.feedback.interest === "very" ? "Very interested" : x.feedback.interest === "maybe" ? "Maybe" : "Not for them"}</span>}
+              </div>
+            )}
+            {view === "incoming" && x.feedback && (x.feedback.comments || x.feedback.questions) && (
+              <div className="small" style={{ background: "rgba(255,255,255,0.7)", padding: 10, borderRadius: 10 }}>
+                {x.feedback.comments && <p style={{ margin: 0 }}>&ldquo;{x.feedback.comments}&rdquo;</p>}
+                {x.feedback.questions && <p style={{ margin: "6px 0 0" }}><span className="strong">Question:</span> {x.feedback.questions}</p>}
+              </div>
+            )}
+            {canStart && (
+              <Link href={`/showings/${x.id}/visit`} className="btn dark block">{x.arrivedAt ? (x.feedback ? "View showing" : "Leave feedback") : "Start showing"}</Link>
+            )}
 
             {view === "incoming" ? (
               <IncomingResponse

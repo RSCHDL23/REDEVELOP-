@@ -2,8 +2,8 @@
 
 import { useActionState, useState } from "react";
 import { PROFESSION_LABELS, type Profession } from "@/lib/core/access";
-import type { ContactPreference } from "@/lib/data/types";
-import { addLicense, saveContact, saveDetails, type FormState } from "./actions";
+import type { ContactPreference, Website } from "@/lib/data/types";
+import { addLicense, saveContact, saveDetails, saveWebsites, type FormState } from "./actions";
 
 function Status({ state }: { state: FormState }) {
   if (state.error) return <p className="error" role="alert">{state.error}</p>;
@@ -67,25 +67,64 @@ const METHODS = [
 
 export function ContactForm({ pref }: { pref: ContactPreference }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveContact, {});
-  const [method, setMethod] = useState<string>(pref.preferred);
+  const [picked, setPicked] = useState<string[]>(pref.methods.length ? pref.methods : [pref.preferred]);
+  const [first, setFirst] = useState<string>(pref.methods[0] ?? pref.preferred);
+  const toggle = (id: string, on: boolean) => {
+    const next = on ? [...picked, id] : picked.filter((m) => m !== id);
+    setPicked(next);
+    if (!next.includes(first) && next[0]) setFirst(next[0]);
+    if (on && next.length === 1) setFirst(id);
+  };
   return (
     <form action={action} className="card">
       <fieldset style={{ border: 0, margin: 0, padding: 0 }} className="stack">
-        <legend className="small muted" style={{ marginBottom: 6 }}>How other agents should request showings on your listings</legend>
+        <legend className="small muted" style={{ marginBottom: 6 }}>How other agents can request showings on your listings. Pick as many as you like.</legend>
         {METHODS.map((m) => (
           <label key={m.id} className="row" style={{ alignItems: "flex-start", cursor: "pointer" }}>
-            <input type="radio" name="preferred" value={m.id} checked={method === m.id} onChange={() => setMethod(m.id)} style={{ width: 20, height: 20, marginTop: 2 }} />
-            <span className="stack" style={{ gap: 0 }}><span className="strong">{m.label}</span><span className="tiny muted">{m.hint}</span></span>
+            <input type="checkbox" name="methods" value={m.id} checked={picked.includes(m.id)} onChange={(e) => toggle(m.id, e.target.checked)} style={{ width: 20, height: 20, marginTop: 2 }} />
+            <span className="stack" style={{ gap: 0, flex: 1 }}><span className="strong">{m.label}</span><span className="tiny muted">{m.hint}</span></span>
+            {picked.includes(m.id) && first === m.id && <span className="pill blue">First choice</span>}
           </label>
         ))}
       </fieldset>
-      {method === "online" && <div className="field"><label htmlFor="onlineUrl">Scheduler link</label><input id="onlineUrl" name="onlineUrl" type="url" className="input" defaultValue={pref.onlineUrl ?? ""} placeholder="https://" /></div>}
+      {picked.length > 1 && (
+        <div className="field">
+          <label htmlFor="first">First choice</label>
+          <select id="first" name="first" className="input" value={first} onChange={(e) => setFirst(e.target.value)}>
+            {METHODS.filter((m) => picked.includes(m.id)).map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+        </div>
+      )}
+      {picked.length === 1 && <input type="hidden" name="first" value={picked[0]} />}
+      {picked.includes("online") && <div className="field"><label htmlFor="onlineUrl">Scheduler link</label><input id="onlineUrl" name="onlineUrl" type="url" className="input" defaultValue={pref.onlineUrl ?? ""} placeholder="https://" /></div>}
       <label className="row small" style={{ cursor: "pointer" }}>
         <input type="checkbox" name="textAfterCall" defaultChecked={pref.textAfterCall} style={{ width: 20, height: 20 }} />
         After I call another agent, offer to text them a recap
       </label>
       <Status state={state} />
       <button className="btn primary block" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
+    </form>
+  );
+}
+
+export function WebsitesForm({ websites }: { websites: Website[] }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveWebsites, {});
+  const [rows, setRows] = useState(websites.length ? websites.map((w, i) => ({ ...w, key: i })) : [{ label: "", url: "", key: 0 }]);
+  return (
+    <form action={action} className="card">
+      <span className="small muted">Your brokerage site, IDX search, Zillow, Instagram, YouTube… Shown on your public profile.</span>
+      {rows.map((r, i) => (
+        <div key={r.key} className="stack" style={{ gap: 6, paddingBottom: 8, borderBottom: "1px solid var(--line)" }}>
+          <div className="row" style={{ gap: 6 }}>
+            <input name="label" className="input" aria-label={`Website ${i + 1} name`} placeholder="Name, e.g. My listings" defaultValue={r.label} maxLength={40} style={{ flex: 1 }} />
+            <button type="button" className="btn danger" aria-label={`Remove website ${i + 1}`} onClick={() => setRows(rows.filter((x) => x.key !== r.key))} style={{ width: 48, padding: 0 }}>✕</button>
+          </div>
+          <input name="url" className="input" aria-label={`Website ${i + 1} link`} placeholder="https://" defaultValue={r.url} maxLength={300} inputMode="url" />
+        </div>
+      ))}
+      {rows.length < 8 && <button type="button" className="btn block" onClick={() => setRows([...rows, { label: "", url: "", key: Date.now() }])}>+ Add website</button>}
+      <Status state={state} />
+      <button className="btn primary block" disabled={pending}>{pending ? "Saving…" : "Save websites"}</button>
     </form>
   );
 }
