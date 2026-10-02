@@ -22,14 +22,20 @@ export function dealTodoTemplate(o: {
     return m ? addDays(m.due, shift) : null;
   };
   const cash = o.loanType.toLowerCase() === "cash";
+  const naca = o.loanType.toLowerCase() === "naca";
   const buyer: (TemplateTask | false)[] = [
     { title: "Send the signed contract to buyer, lender and both attorneys", assignee: "You", due: o.acceptance },
     { title: `Deliver earnest money${o.earnestHolder ? ` to ${o.earnestHolder}` : ""} and get a receipt`, assignee: "Buyer", due: at("earnest_money") },
-    { title: "Schedule the home inspection", assignee: "You", due: addBusinessDays(o.acceptance, 1) },
+    !naca && { title: "Schedule the home inspection", assignee: "You", due: addBusinessDays(o.acceptance, 1) },
     { title: "Attend the inspection", assignee: "You", due: at("inspection", -2) },
     { title: "Send the inspection report to the buyer's attorney", assignee: "You", due: at("inspection", -1) },
     { title: "Confirm attorney review is closed", assignee: "Buyer's attorney", due: at("attorney_review") },
     !cash && { title: "Lender orders the appraisal", assignee: "Lender", due: at("attorney_review", 2) },
+    naca && { title: "Book NACA-approved home and pest inspectors", assignee: "You", due: addBusinessDays(o.acceptance, 1) },
+    naca && { title: "Send the inspection to NACA's HAND department for the repair review", assignee: "You", due: at("inspection") },
+    naca && { title: "Buyer meets the NACA Mortgage Consultant for Credit Access approval", assignee: "Buyer", due: at("attorney_review", 3) },
+    naca && { title: "Confirm the settlement agent is NACA-approved", assignee: "Buyer's attorney", due: at("attorney_review") },
+    naca && { title: "Confirm the closing appointment at the NACA office", assignee: "You", due: at("closing", -7) },
     o.hasHoa && { title: "Get HOA documents to the buyer's attorney", assignee: "Listing agent", due: at("hoa_docs", -3) },
     { title: "Buyer gets homeowner's insurance in place", assignee: "Buyer", due: at("closing", -14) },
     !cash && { title: "Confirm clear to close", assignee: "Lender", due: at("closing", -5) },

@@ -3,7 +3,8 @@
 import { useActionState, useState } from "react";
 import { PROFESSION_LABELS, type Profession } from "@/lib/core/access";
 import type { ContactPreference, Website } from "@/lib/data/types";
-import { addLicense, saveContact, saveDetails, saveIdChoice, saveReviewLinks, saveStartPlaces, saveWebsites, type FormState } from "./actions";
+import { addLicense, saveContact, saveDetails, saveEsign, saveIdChoice, saveReviewLinks, saveStartPlaces, saveWebsites, type FormState } from "./actions";
+import { ESIGN_PROVIDERS } from "@/lib/core/agreements";
 import type { Place } from "@/lib/data/types";
 
 function Status({ state }: { state: FormState }) {
@@ -185,6 +186,29 @@ export function StartPlacesForm({ home, office }: { home: Place | null; office: 
         );
       })}
       {msg && <span className="small" role="status">{msg}</span>}
+      <Status state={state} />
+      <button className="btn primary block" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
+    </form>
+  );
+}
+
+export function EsignForm({ provider, url }: { provider: string | null; url: string }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveEsign, {});
+  return (
+    <form action={action} className="card">
+      <span className="small muted">When you add a client, REschedule opens this to send their buyer or listing agreement.</span>
+      <div className="field">
+        <label htmlFor="esign-provider">E-signature software</label>
+        <select id="esign-provider" name="provider" className="input" defaultValue={provider ?? ""} required>
+          <option value="" disabled>Choose…</option>
+          {ESIGN_PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor="esign-url">Your link (optional)</label>
+        <input id="esign-url" name="url" className="input" defaultValue={url} placeholder="e.g. your template or sign-in page" maxLength={300} />
+        <span className="tiny muted">Paste the page you start agreements from, like your brokerage template folder. Leave blank to open the software&apos;s website.</span>
+      </div>
       <Status state={state} />
       <button className="btn primary block" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
     </form>

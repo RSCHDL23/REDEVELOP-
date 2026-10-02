@@ -72,7 +72,7 @@ export function emailRequest(s: Sender, d: RequestDetails): { subject: string; b
     `Phone: ${s.phone}`,
     s.email ? `Email: ${s.email}` : null,
     ...(d.comments ? ["", `Comments: ${d.comments}`] : []),
-    ...(d.attachments?.length ? ["", "Attached documents (private links, expire in 14 days):", ...d.attachments.map((a) => `• ${a.name}: ${a.url}`)] : []),
+    ...(d.attachments?.length ? ["", "Attached documents (private links):", ...d.attachments.map((a) => `• ${a.name}: ${a.url}`)] : []),
     "",
     "Please confirm, or suggest another time that works for your sellers.",
     "",

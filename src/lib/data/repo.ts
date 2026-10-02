@@ -53,7 +53,7 @@ export interface PublicProfile {
 /** Everything the screens need. Implemented by the demo store and by Supabase. */
 export interface Repo {
   getMe(): Promise<Profile>;
-  updateMe(patch: Partial<Pick<Profile, "fullName" | "phone" | "tagline" | "bio" | "brokerage" | "headshotUrl" | "logoUrl" | "selfRoles" | "websites" | "mapApp" | "mlsAgentId" | "idInMessages" | "home" | "office" | "reviewLinks" | "rememberAuto" | "rememberChannel" | "myResources">>): Promise<void>;
+  updateMe(patch: Partial<Pick<Profile, "fullName" | "phone" | "tagline" | "bio" | "brokerage" | "headshotUrl" | "logoUrl" | "selfRoles" | "websites" | "mapApp" | "mlsAgentId" | "idInMessages" | "home" | "office" | "reviewLinks" | "rememberAuto" | "rememberChannel" | "myResources" | "esignProvider" | "esignUrl">>): Promise<void>;
 
   getContactPreference(): Promise<ContactPreference>;
   saveContactPreference(pref: ContactPreference): Promise<void>;
@@ -89,9 +89,9 @@ export interface Repo {
   submitFeedback(id: string, feedback: ShowingFeedback): Promise<void>;
 
   listClients(): Promise<Client[]>;
-  addClient(input: Pick<Client, "name" | "phone" | "email" | "preApproved"> & Partial<Pick<Client, "stage" | "notes" | "intent">>): Promise<Client>;
+  addClient(input: Pick<Client, "name" | "phone" | "email" | "preApproved"> & Partial<Pick<Client, "stage" | "notes" | "intent" | "loanProgram">>): Promise<Client>;
   setClientStage(id: string, stage: ClientStage): Promise<void>;
-  updateClient(id: string, patch: Partial<Pick<Client, "closedOn" | "remember" | "notes" | "phone" | "email">>): Promise<void>;
+  updateClient(id: string, patch: Partial<Pick<Client, "closedOn" | "remember" | "notes" | "phone" | "email" | "agreementSentAt" | "loanProgram" | "approvedMonthly" | "currentHousing" | "programSteps" | "qualifiedOn">>): Promise<void>;
   markReviewRequested(clientId: string): Promise<void>;
   listMyReviews(): Promise<ClientReview[]>;
   /** Review page from a client's private link (no account needed). */
@@ -114,6 +114,8 @@ export interface Repo {
 
   /** Documents attached to showing requests, shared by private link. */
   saveAttachment(file: { name: string; mime: string; bytes: Uint8Array }): Promise<{ id: string; token: string }>;
+  /** Offer accepted: keep this property's document links open until closing (never shortens them). */
+  extendPropertyDocs(address: string, untilIso: string): Promise<void>;
   /** Demo returns the bytes; Supabase returns the storage path for a signed download link. */
   getAttachment(token: string): Promise<{ name: string; mime: string; bytes?: Uint8Array; path?: string } | null>;
 

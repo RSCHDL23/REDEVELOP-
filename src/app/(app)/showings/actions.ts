@@ -99,6 +99,8 @@ export type NewRequestState = {
   error?: string;
   /** For agents not on REschedule: the message to send from your phone. */
   send?: { href: string; label: string; body: string; to: string };
+  /** Calls can't carry documents: a text with the links. */
+  alsoText?: { href: string; label: string };
 };
 
 export async function createRequest(_prev: NewRequestState, formData: FormData): Promise<NewRequestState> {
@@ -159,7 +161,13 @@ export async function createRequest(_prev: NewRequestState, formData: FormData):
 
   // Not on REschedule: hand back a ready-to-send message.
   const [me, licenses] = await Promise.all([r.getMe(), r.listLicenses()]);
-  return { send: sendLinkFor(created, me, preApproved, licenses, await appOrigin()) };
+  const origin = await appOrigin();
+  const send = sendLinkFor(created, me, preApproved, licenses, origin);
+  const phone = created.otherAgent.phone;
+  const alsoText = created.attachments.length && phone && !send.href.startsWith("sms:")
+    ? { href: `sms:${phone.replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(`Hi ${created.otherAgent.name.split(" ")[0]}, ${me.fullName} here. Documents for my showing request at ${created.address}: ${created.attachments.map((a) => `${a.name} ${origin}${a.url}`).join(" · ")}`)}`, label: `Text ${created.otherAgent.name.split(" ")[0]} the documents` }
+    : undefined;
+  return { send, alsoText };
 }
 
 // ---------- Requester edits the request ----------

@@ -32,7 +32,13 @@ export interface Profile {
   myResources: MyResource[];
   /** For buyers and sellers: the agent they send homes to. */
   myAgent: { name: string; slug: string } | null;
+  /** The agent's e-signature software, for sending agreements. */
+  esignProvider: EsignProvider | null;
+  esignUrl: string;
 }
+
+export type EsignProvider = "docusign" | "dotloop" | "authentisign" | "skyslope" | "adobe" | "zipforms" | "other";
+export type LoanProgram = "unknown" | "conventional" | "fha" | "va" | "usda" | "naca" | "cash" | "other";
 
 export interface MyResource {
   title: string;
@@ -54,6 +60,8 @@ export interface Attachment {
   name: string;
   /** Private link: /d/{token} */
   url: string;
+  /** When the private link stops working (14 days, or until closing once an offer is accepted). */
+  expiresAt?: string;
 }
 
 export interface HomeShare {
@@ -156,6 +164,14 @@ export interface Client {
   remember: boolean;
   reviewToken: string;
   reviewRequestedAt: string | null;
+  /** When the buyer or listing agreement was sent for signature. */
+  agreementSentAt: string | null;
+  loanProgram: LoanProgram;
+  /** NACA: approved maximum monthly payment, today's housing payment, finished steps, qualification date. */
+  approvedMonthly: number | null;
+  currentHousing: number | null;
+  programSteps: string[];
+  qualifiedOn: string | null;
 }
 
 export interface ClientReview {

@@ -9,7 +9,7 @@ import { ImageUpload } from "./ImageUpload";
 import QRCode from "qrcode";
 import { appOrigin } from "@/lib/server/origin";
 import { MAP_APPS } from "@/lib/data/requestMessages";
-import { ContactForm, DetailsForm, IdChoiceForm, LicenseForm, StartPlacesForm, WebsitesForm } from "./Forms";
+import { ContactForm, DetailsForm, EsignForm, IdChoiceForm, LicenseForm, StartPlacesForm, WebsitesForm } from "./Forms";
 import { LinkShare } from "./LinkShare";
 import { MfaSetup } from "./MfaSetup";
 import { removeLicense, removeMembership, removeWork, requestMlsAccess, saveMapApp } from "./actions";
@@ -134,6 +134,13 @@ export default async function ProfilePage() {
           </div>
         )}
       </section>
+
+      {isPro && (
+        <section className="stack" id="esign">
+          <h2 className="section-label">E-signature</h2>
+          <EsignForm provider={me.esignProvider} url={me.esignUrl} />
+        </section>
+      )}
 
       {isPro && (
         <section className="stack" id="memberships">

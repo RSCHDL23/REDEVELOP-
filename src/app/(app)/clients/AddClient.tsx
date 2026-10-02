@@ -3,10 +3,12 @@
 import { useActionState, useEffect, useRef } from "react";
 import { addClient, type ClientState } from "./actions";
 import { TipsSender } from "./TipsButton";
+import { AgreementSender } from "./AgreementSender";
+import { agreementFor, agreementHeadsUp } from "@/lib/core/agreements";
 import { buyerDosAndDonts, sellerDosAndDonts } from "@/lib/core/clientTips";
 import { greetingName } from "@/lib/core/closing";
 
-export function AddClient({ stage, agentName, agentPhone }: { stage: string; agentName: string; agentPhone: string }) {
+export function AddClient({ stage, agentName, agentPhone, esign }: { stage: string; agentName: string; agentPhone: string; esign: { provider: string | null; url: string } }) {
   const [state, action, pending] = useActionState<ClientState, FormData>(addClient, {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => { if (state.ok) form.current?.reset(); }, [state]);
@@ -35,10 +37,26 @@ export function AddClient({ stage, agentName, agentPhone }: { stage: string; age
             </select>
           </div>
         </div>
+        <div className="field">
+          <label htmlFor="c-loan">Loan</label>
+          <select id="c-loan" name="loanProgram" className="input" defaultValue="unknown">
+            {[["unknown", "Not sure yet"], ["conventional", "Conventional"], ["fha", "FHA"], ["va", "VA"], ["usda", "USDA"], ["naca", "NACA"], ["cash", "Cash"], ["other", "Other"]].map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </div>
         <div className="field"><label htmlFor="c-notes">Notes</label><textarea id="c-notes" name="notes" className="input" maxLength={500} placeholder="e.g. 3 bed, under $650k, near the Brown Line" /></div>
         <label className="row small" style={{ cursor: "pointer" }}><input type="checkbox" name="preApproved" style={{ width: 20, height: 20 }} /> Pre-approved</label>
         {state.error && <p className="error" role="alert">{state.error}</p>}
         {state.ok && <p className="small strong" role="status" style={{ color: "var(--green)", margin: 0 }}>✓ {state.ok}</p>}
+        {state.added && (
+          <AgreementSender
+            key={`a-${state.added.id}`}
+            startOpen
+            clientId={state.added.id} name={state.added.name} phone={state.added.phone} email={state.added.email} sentAt={null}
+            agreement={agreementFor(state.added.intent)} buyer={state.added.intent === "Buying" || state.added.intent === "Investing"}
+            provider={esign.provider} providerUrl={esign.url}
+            headsUp={agreementHeadsUp({ clientFirst: greetingName(state.added.name), agreement: agreementFor(state.added.intent), provider: esign.provider ?? "e-signature", agentName, agentPhone })}
+          />
+        )}
         {state.added && (
           <TipsSender
             key={state.added.name + state.ok}

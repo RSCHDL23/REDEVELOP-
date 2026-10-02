@@ -18,10 +18,14 @@ const agent = (id: string, name: string, phone: string, preferred: AgentSummary[
 const snapshot = (l: Listing) => ({ address: l.address, city: `${l.city}, ${l.state}`, photoUrl: l.photoUrl, beds: l.beds, baths: l.baths, sqft: l.sqft, lat: l.lat, lng: l.lng });
 
 const ME_ID = "demo-donna";
-type DemoFile = { id: string; token: string; name: string; mime: string; bytes: Uint8Array };
-const fileLink = (f: DemoFile): Attachment => ({ id: f.id, name: f.name, url: `/d/${f.token}` });
-type BaseClient = Omit<Client, "closedOn" | "remember" | "reviewToken" | "reviewRequestedAt"> & Partial<Pick<Client, "closedOn">>;
-const withClientDefaults = (c: BaseClient): Client => ({ closedOn: null, remember: true, reviewToken: `tok-${c.id}`, reviewRequestedAt: null, ...c });
+type DemoFile = { id: string; token: string; name: string; mime: string; bytes: Uint8Array; expiresAt: string };
+const fileLink = (f: DemoFile): Attachment => ({ id: f.id, name: f.name, url: `/d/${f.token}`, expiresAt: f.expiresAt });
+type BaseClient = Omit<Client, "closedOn" | "remember" | "reviewToken" | "reviewRequestedAt" | "agreementSentAt" | "loanProgram" | "approvedMonthly" | "currentHousing" | "programSteps" | "qualifiedOn">
+  & Partial<Pick<Client, "closedOn" | "loanProgram" | "approvedMonthly" | "currentHousing" | "programSteps" | "qualifiedOn" | "agreementSentAt">>;
+const withClientDefaults = (c: BaseClient): Client => ({
+  closedOn: null, remember: true, reviewToken: `tok-${c.id}`, reviewRequestedAt: null,
+  agreementSentAt: null, loanProgram: "unknown", approvedMonthly: null, currentHousing: null, programSteps: [], qualifiedOn: null, ...c,
+});
 const DEAL_CLIENTS: Record<string, string> = { "Ana Price": "c-price", "The Sandovals": "c-sandoval", "The Greens": "c-greens", "Tasha Greene": "c-greene", "Grace & Tom Ward": "c-ward" };
 
 interface Store {
@@ -93,7 +97,8 @@ function seed(): Store {
   const clients: Client[] = ([
     { id: "c-alvarez", name: "Maria & Luis Alvarez", phone: "(708) 555-0111", email: "alvarez@example.com", preApproved: true, stage: "present", source: "manual", intent: "Buying", notes: "3 bed, under $650k, near the Brown Line", createdAt: toTimestamp(addDays(today, -40), hm(12)) },
     { id: "c-price", name: "Ana Price", phone: "(312) 555-0160", email: "ana@example.com", preApproved: true, stage: "present", source: "manual", intent: "Buying", notes: "", createdAt: toTimestamp(addDays(today, -60), hm(12)) },
-    { id: "c-greens", name: "The Greens", phone: "(773) 555-0172", email: "greens@example.com", preApproved: false, stage: "present", source: "manual", intent: "Buying", notes: "", createdAt: toTimestamp(addDays(today, -30), hm(12)) },
+    { id: "c-greens", name: "The Greens", phone: "(773) 555-0172", email: "greens@example.com", preApproved: false, stage: "present", source: "manual", intent: "Buying", notes: "Working with NACA", createdAt: toTimestamp(addDays(today, -30), hm(12)),
+      loanProgram: "naca", approvedMonthly: 2350, currentHousing: 1650, programSteps: ["workshop", "counseling", "payment_shock", "qualified", "purchase_workshop"], qualifiedOn: addDays(today, -21), agreementSentAt: toTimestamp(addDays(today, -29), hm(10)) },
     { id: "c-greene", name: "Tasha Greene", phone: "(219) 555-0135", email: "tasha@example.com", preApproved: true, stage: "present", source: "manual", intent: "Buying", notes: "", createdAt: toTimestamp(addDays(today, -50), hm(12)) },
     { id: "c-sandoval", name: "The Sandovals", phone: "(847) 555-0181", email: "sandoval@example.com", preApproved: false, stage: "present", source: "deal", intent: "Selling", notes: "", createdAt: toTimestamp(addDays(today, -90), hm(12)) },
     { id: "c-ward", name: "Grace & Tom Ward", phone: "(312) 555-0144", email: "ward@example.com", preApproved: false, stage: "present", source: "deal", intent: "Selling", notes: "", createdAt: toTimestamp(addDays(today, -45), hm(12)) },
@@ -145,7 +150,7 @@ function seed(): Store {
       ],
     }),
     mkDeal("ridgeway", "2207 Ridgeway Ave", "Evanston, IL", "seller", "Clear to close", addDays(today, -35), today, "Conventional", "The Sandovals"),
-    mkDeal("wolcott", "935 N Wolcott Ave", "Chicago, IL", "buyer", "Attorney review", addDays(today, -4), addDays(today, 36), "FHA", "The Greens"),
+    mkDeal("wolcott", "935 N Wolcott Ave", "Chicago, IL", "buyer", "Attorney review", addDays(today, -4), addDays(today, 36), "NACA", "The Greens"),
     mkDeal("calumet", "7712 Calumet Ave", "Munster, IN", "buyer", "Appraisal", addDays(today, -12), addDays(today, 22), "Conventional", "Tasha Greene"),
     mkDeal("18th", "1510 W 18th St", "Chicago, IL", "seller", "Mortgage contingency", addDays(today, -16), addDays(today, 27), "Conventional", "Grace & Tom Ward"),
   ];
@@ -154,7 +159,8 @@ function seed(): Store {
     me: { id: ME_ID, fullName: "Donna White", email: "donna@example.com", phone: "(708) 555-0123", tagline: "", bio: "Chicagoland and NW Indiana agent and loan officer", headshotUrl: null, logoUrl: null, brokerage: "D. White Realty", slug: "donna-white", websites: [{ label: "D. White Realty", url: "https://example.com" }], mapApp: "google",
       mlsAgentId: "70012345", idInMessages: "license", home: { address: "Your home (sample)", lat: 41.8855, lng: -87.7845 }, office: { address: "D. White Realty office (sample)", lat: 41.9435, lng: -87.6795 },
       reviewLinks: [{ label: "Zillow", url: "https://www.zillow.com/profile/" }, { label: "Google", url: "https://g.page/r/" }], rememberAuto: true, rememberChannel: "text",
-      myResources: [{ title: "D. White Realty listing agreement (sample)", url: "https://example.com/forms/listing-agreement.pdf", category: "My forms" }], myAgent: null, serviceAreas: ["Chicago", "Oak Park", "Evanston", "NW Indiana"], selfRoles: [] },
+      myResources: [{ title: "D. White Realty listing agreement (sample)", url: "https://example.com/forms/listing-agreement.pdf", category: "My forms" }], myAgent: null,
+      esignProvider: "dotloop", esignUrl: "", serviceAreas: ["Chicago", "Oak Park", "Evanston", "NW Indiana"], selfRoles: [] },
     contact: { preferred: "app", methods: ["app", "text"], textAfterCall: true },
     portfolio: [],
     licenses: [
@@ -350,13 +356,21 @@ export const demoRepo: Repo = {
     d?.tasks.push({ id: `${dealId}-t${Date.now()}`, ...t, done: false, source: "manual" });
   },
   async saveAttachment(file) {
-    const f: DemoFile = { id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, token: crypto.randomUUID().replace(/-/g, ""), ...file };
+    const f: DemoFile = { id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, token: crypto.randomUUID().replace(/-/g, ""), ...file, expiresAt: new Date(Date.now() + 14 * 86400000).toISOString() };
     store().files.push(f);
     return { id: f.id, token: f.token };
   },
   async getAttachment(token) {
-    const f = store().files.find((x) => x.token === token);
+    const f = store().files.find((x) => x.token === token && x.expiresAt > new Date().toISOString());
     return f ? { name: f.name, mime: f.mime, bytes: f.bytes } : null;
+  },
+  async extendPropertyDocs(address, untilIso) {
+    const s = store();
+    const key = address.trim().toLowerCase();
+    if (key.length < 5) return;
+    const ids = new Set(s.requests.filter((r) => r.direction === "sent" && r.address.toLowerCase().startsWith(key)).flatMap((r) => r.attachments.map((a) => a.id)));
+    for (const f of s.files) if (ids.has(f.id) && f.expiresAt < untilIso) f.expiresAt = untilIso;
+    for (const r of s.requests) r.attachments = r.attachments.map((a) => { const f = s.files.find((x) => x.id === a.id); return f ? fileLink(f) : a; });
   },
   async listHomeShares() { return [...store().shares].sort((a, b) => b.createdAt.localeCompare(a.createdAt)); },
   async shareHome(input) {

@@ -4,6 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { repo } from "@/lib/data";
+import { toTimestamp } from "@/lib/data/dates";
+
+/** Offer accepted: documents attached to showing requests for this home stay open through closing day. */
+async function keepDocsUntilClosing(address: string, closing: string) {
+  try { await repo().extendPropertyDocs(address, toTimestamp(closing, 24 * 60 - 1)); } catch { /* best effort */ }
+}
 
 function ids(formData: FormData) {
   return { dealId: String(formData.get("dealId") ?? ""), itemId: String(formData.get("itemId") ?? "") };
@@ -41,7 +47,10 @@ export async function setMilestoneDate(formData: FormData) {
   const { dealId, itemId } = ids(formData);
   const due = DATE.safeParse(formData.get("due"));
   if (!dealId || !itemId || !due.success) return;
+  const deal = await repo().getDeal(dealId);
+  const kind = deal?.milestones.find((m) => m.id === itemId)?.kind;
   await repo().setMilestoneDate(dealId, itemId, due.data);
+  if (deal && kind === "closing") await keepDocsUntilClosing(deal.address, due.data);
   refresh(dealId);
 }
 
@@ -115,6 +124,7 @@ export async function createDeal(_prev: NewDealState, formData: FormData): Promi
     tasks,
     milestones: milestones.map((m) => (m.kind === "closing" ? { ...m, due: f.closingDate } : m)),
   });
+  await keepDocsUntilClosing(f.address, f.closingDate);
   refresh(id);
   redirect(`/deals/${id}?created=1`);
 }

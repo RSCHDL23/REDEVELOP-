@@ -28,6 +28,11 @@ const L = {
   cookCalendar: { title: "Cook County assessment and appeal calendar", url: "https://www.cookcountyassessoril.gov/assessment-calendar-and-deadlines", source: "Cook County Assessor" },
   cookBor: { title: "Cook County Board of Review (second-level appeals)", url: "https://www.cookcountyboardofreview.com/", source: "Cook County Board of Review" },
   inDeductions: { title: "Indiana property tax deductions (homestead and more)", url: "https://www.in.gov/dlgf/deductions-and-credits/", source: "Indiana DLGF" },
+  narFaq: { title: "NAR settlement FAQs (written buyer agreements)", url: "https://www.nar.realtor/the-facts/nar-settlement-faqs", source: "National Association of REALTORS®" },
+  naca10: { title: "NACA: 10 steps to homeownership", url: "https://www.naca.com/10steps/", source: "NACA" },
+  nacaPurchase: { title: "NACA: Purchase process (HAND, closing)", url: "https://www.naca.com/purchase/", source: "NACA" },
+  nacaQual: { title: "NACA: Qualification FAQ", url: "https://www.naca.com/faq/qualification-process/", source: "NACA" },
+  nacaCounsel: { title: "NACA: Counseling Department", url: "https://www.naca.com/counseling-department/", source: "NACA" },
 } satisfies Record<string, ResourceLink>;
 
 export const FAQS: Faq[] = [
@@ -82,6 +87,16 @@ export const FAQS: Faq[] = [
     links: [L.irs701], tags: ["tax", "capital gains", "seller", "irs"],
   },
   {
+    q: "Do I need a signed agreement before showing a buyer homes?",
+    a: "Yes, if you're in an MLS. Since NAR's practice change on August 17, 2024, agents working with a buyer must have a written agreement with them before touring a home, and it must spell out how you're paid. When you add a client, REschedule offers to send their agreement through your e-signature software.",
+    links: [L.narFaq], tags: ["buyer agreement", "nar", "settlement", "touring", "compensation"],
+  },
+  {
+    q: "How is a NACA purchase different from a regular loan?",
+    a: "NACA buyers become members, attend a homebuyer workshop, work with a housing counselor, and save their 'payment shock' each month. Once NACA Qualified, they're approved for a maximum monthly payment (the Qualification Form is good for 6 months). Contracts need at least a 30-day closing and a NACA-approved settlement agent. NACA-approved inspectors check the home, the HAND department reviews repairs, and closing happens at the NACA office. There's no down payment, no closing costs and no mortgage insurance.",
+    links: [L.naca10, L.nacaPurchase, L.nacaQual], tags: ["naca", "lending", "payment shock", "hand", "workshop", "counseling"],
+  },
+  {
     q: "Where do I check a license or renew mine?",
     a: "Illinois licenses are managed by IDFPR's Division of Real Estate; Indiana's by the Professional Licensing Agency.",
     links: [L.idfpr, L.inPla], tags: ["license", "renewal", "idfpr", "indiana"],
@@ -93,5 +108,6 @@ export const SECTIONS: Section[] = [
   { id: "forms", title: "Contracts & disclosures", blurb: "Standard forms and required disclosures.", audience: "agents", links: [L.multiBoard, L.disclosureAct, L.radon, L.lead] },
   { id: "buyers", title: "First-time homebuyer help", blurb: "Down payment help, grants, loans and free counseling.", audience: "clients", links: [L.ihda, L.ihcda, L.counselor, L.cfpb, L.freddie] },
   { id: "taxes", title: "Property taxes & appeals", blurb: "Lower the tax bill: exemptions and appeals.", audience: "clients", links: [L.cookExempt, L.cookAppeal, L.cookCalendar, L.cookBor, L.inDeductions] },
+  { id: "naca", title: "NACA mortgage", blurb: "Workshops, counseling, payment shock and a monthly-payment approval, with no down payment or closing costs.", audience: "clients", links: [L.naca10, L.nacaQual, L.nacaPurchase, L.nacaCounsel] },
   { id: "selling", title: "Selling & closing", blurb: "Taxes on a sale and staying safe at closing.", audience: "clients", links: [L.irs701, L.ic3, L.cfpb] },
 ];

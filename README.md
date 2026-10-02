@@ -20,6 +20,9 @@ It's a phone-friendly web app. People can add it to their home screen like a reg
 | **Leave-on-time alerts** | Today shows when to leave for your next showing based on where you are. If you're running late, one tap sends your ETA to the listing agent (and texts your buyers) |
 | **REsource** | Search quick answers (dual agency, disclosures, radon, lead paint, texting rules, fair housing ads, earnest money, attorney review, wire fraud) with the official sources, your association and MLS links, your saved forms, and client help like first-time buyer programs and property tax appeals, each with a Share button |
 | **Homes from buyers** | Buyers send homes from Zillow, Redfin or Realtor.com to their agent (paste a link, or use the phone's Share menu on Android). They land in Clients and on Today with a one-tap "Request showing" |
+| **Agreements** | Adding a client offers to send their buyer or listing agreement through your e-signature software (DocuSign, dotloop, SkySlope, Adobe Sign, Authentisign, zipForm or your own link) and tracks that it was sent |
+| **NACA & loans** | Set each buyer's loan program. NACA buyers get a 10-step tracker (workshop, counseling, payment shock, qualification, HAND review, closing at NACA), their approved monthly payment, payment shock and qualification expiry. NACA deals get NACA to-dos |
+| **Mortgage calculator** | What a monthly budget buys or what a price costs each month, with taxes, insurance, HOA, mortgage insurance, payment shock and a NACA mode |
 | **Clients** | Present, Future (new leads, including people who connect through your link) and Past. Text, call, email, request a showing or start a deal from each client |
 | **My link & QR** | Every professional gets a public page (`/p/your-name`) and QR code. Clients scan it, fill in their info, and land in Clients → Future |
 | **Deals** | Create a deal from the contract dates; every milestone date fills in and can be changed. Checking off Closing sets off a celebration and sends your client their after-closing checklist by text or email. Every deal shows progress and the next deadline. Each deal has dates (business days, skipping federal holidays), to-dos, people and lender loan updates |
@@ -41,7 +44,7 @@ With no database connected, the app runs in **demo mode**: any email and passwor
 ## Go live with Supabase (database, sign-in, file storage)
 
 1. Create a free project at <https://supabase.com>.
-2. In the project, open **SQL Editor → New query**. Paste everything from `supabase/migrations/0001_init.sql` and click **Run**. Then do the same with `0002_showing_updates.sql`, `0003_clients_links_deals.sql`, `0004_edits_reviews_remember.sql` and `0005_docs_shares_memberships.sql`. Always run the files in number order; each new update adds a new numbered file. This creates the tables, the security rules and the photo folders.
+2. In the project, open **SQL Editor → New query**. Paste everything from `supabase/migrations/0001_init.sql` and click **Run**. Then do the same with `0002_showing_updates.sql`, `0003_clients_links_deals.sql`, `0004_edits_reviews_remember.sql`, `0005_docs_shares_memberships.sql` and `0006_agreements_naca.sql`. Always run the files in number order; each new update adds a new numbered file. This creates the tables, the security rules and the photo folders.
 3. Open **Project Settings → API**. Copy the **Project URL** and the **anon public** key.
 4. In this folder, copy `.env.example` to a new file named `.env.local` and fill it in:
    ```

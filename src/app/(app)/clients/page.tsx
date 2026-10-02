@@ -7,6 +7,9 @@ import { formatClock } from "@/lib/core/time";
 import { Empty, Initials } from "@/components/ui";
 import { AddClient } from "./AddClient";
 import { TipsSender } from "./TipsButton";
+import { AgreementSender } from "./AgreementSender";
+import { ProgramPanel } from "./ProgramPanel";
+import { agreementFor, agreementHeadsUp, ESIGN_PROVIDERS } from "@/lib/core/agreements";
 import { buyerDosAndDonts, sellerDosAndDonts } from "@/lib/core/clientTips";
 import { greetingName } from "@/lib/core/closing";
 import { SITE_NAMES } from "@/lib/core/listingLinks";
@@ -29,6 +32,8 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   const r = repo();
   const [clients, requests, deals, shares, me] = await Promise.all([r.listClients(), r.listRequests(), r.listDeals(), r.listHomeShares(), r.getMe()]);
   const newShares = shares.filter((x) => !x.seen);
+  const provider = ESIGN_PROVIDERS.find((p) => p.id === me.esignProvider);
+  const esign = { provider: provider?.label ?? null, url: me.esignUrl || provider?.url || "" };
   const today = todayISO();
   const list = clients.filter((c) => c.stage === current.id);
   const count = (s: ClientStage) => clients.filter((c) => c.stage === s).length;
@@ -78,7 +83,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
         </section>
       )}
 
-      <AddClient stage={current.id} agentName={me.fullName} agentPhone={me.phone} />
+      <AddClient stage={current.id} agentName={me.fullName} agentPhone={me.phone} esign={esign} />
 
       {list.length === 0 && <Empty>{current.id === "future" ? "No new leads yet. Share your personal link or QR code (under My link & QR) so clients can connect with you." : "No clients here yet."}</Empty>}
 
@@ -118,6 +123,14 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
               {c.stage !== "past" && <Link className="btn" href={`/showings/new?client=${c.id}`}>Request showing</Link>}
               {c.stage !== "past" && !deal && <Link className="btn" href={`/deals/new?client=${c.id}`}>Start deal</Link>}
               {c.stage !== "past" && (
+                <AgreementSender
+                  clientId={c.id} name={c.name} phone={c.phone} email={c.email} sentAt={c.agreementSentAt}
+                  agreement={agreementFor(c.intent)} buyer={c.intent === "Buying" || c.intent === "Investing"}
+                  provider={esign.provider} providerUrl={esign.url}
+                  headsUp={agreementHeadsUp({ clientFirst: greetingName(c.name), agreement: agreementFor(c.intent), provider: esign.provider ?? "e-signature", agentName: me.fullName, agentPhone: me.phone })}
+                />
+              )}
+              {c.stage !== "past" && (
                 <TipsSender
                   name={c.name} phone={c.phone} email={c.email}
                   title={c.intent === "Selling" ? "Seller do's and don'ts" : "Homebuyer do's and don'ts"}
@@ -125,6 +138,8 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
                 />
               )}
             </div>
+
+            {(c.intent === "Buying" || c.intent === "Investing") && c.stage !== "past" && <ProgramPanel c={c} rate={6.625} />}
 
             <form action={moveClient} className="row small" style={{ gap: 6, flexWrap: "wrap" }}>
               <input type="hidden" name="id" value={c.id} />

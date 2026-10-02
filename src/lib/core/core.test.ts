@@ -266,3 +266,31 @@ describe("home links from listing sites", () => {
     expect(firstUrl("Check this out! https://www.redfin.com/IL/Chicago/x-60625/home/1 nice")).toBe("https://www.redfin.com/IL/Chicago/x-60625/home/1");
   });
 });
+
+import { monthlyPI, paymentFromPrice, priceFromPayment, paymentShock } from "./mortgage";
+import { qualificationExpires } from "./naca";
+describe("mortgage calculator", () => {
+  const costs = { downPct: 0, ratePct: 6.625, years: 30, taxRatePct: 2, insuranceYear: 1800, hoaMonth: 0, pmiPct: 0 };
+  it("matches the standard payment formula", () => {
+    expect(monthlyPI(300000, 6, 30)).toBeCloseTo(1798.65, 1);
+    expect(monthlyPI(120000, 0, 10)).toBe(1000);
+  });
+  it("turns a monthly approval into a price and back", () => {
+    const p = priceFromPayment(2500, costs);
+    expect(paymentFromPrice(p.price, costs).total).toBeCloseTo(2500, 2);
+    expect(p.price).toBeGreaterThan(250000);
+    expect(p.price).toBeLessThan(320000);
+    expect(paymentShock(1600, 2500)).toBe(900);
+    expect(paymentShock(2600, 2500)).toBe(0);
+    expect(qualificationExpires("2026-10-01")).toBe("2027-04-01");
+  });
+});
+
+describe("NACA to-dos", () => {
+  it("adds the NACA steps and drops the generic inspection booking", () => {
+    const ms = contractMilestones({ acceptance: "2026-10-05", closing: "2026-11-20", mortgageContingencyDays: 21 });
+    const t = dealTodoTemplate({ side: "buyer", loanType: "NACA", hasHoa: false, acceptance: "2026-10-05", milestones: ms });
+    expect(t.some((x) => x.title.includes("HAND"))).toBe(true);
+    expect(t.some((x) => x.title === "Schedule the home inspection")).toBe(false);
+  });
+});

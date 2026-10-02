@@ -47,7 +47,7 @@ export function AttachDocs({ value, onChange, name = "attachmentIds" }: { value:
       )}
       <input type="hidden" name={name} value={JSON.stringify(value.map((a) => a.id))} />
       {error && <span className="error" role="alert">{error}</span>}
-      <span className="tiny muted">PDF or photo, up to 10 MB each. Listing agents get a private link that expires in 14 days. Pre-approval letters can include personal details, so attach only what the listing agent needs.</span>
+      <span className="tiny muted">PDF or photo, up to 10 MB each. Listing agents get a private link that expires in 14 days, or stays open until closing once an offer on that home is accepted. Pre-approval letters can include personal details, so attach only what the listing agent needs.</span>
     </div>
   );
 }

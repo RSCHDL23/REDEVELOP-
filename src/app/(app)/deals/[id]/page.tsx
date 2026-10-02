@@ -96,6 +96,17 @@ export default async function DealPage({ params, searchParams }: { params: Promi
         </div>
       )}
 
+      {deal.loanType.toLowerCase() === "naca" && (
+        <div className="card small" style={{ gap: 4, background: "#eef7f2", borderColor: "#b9dcc6" }}>
+          <span className="strong">NACA mortgage</span>
+          <span>NACA-approved inspectors and settlement agent · HAND reviews repairs · Credit Access with the Mortgage Consultant · closing at the NACA office.</span>
+          <span className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+            <a href="https://www.naca.com/purchase/" target="_blank" rel="noreferrer">NACA purchase process ↗</a>
+            <Link href="/calculator?mode=budget&naca=1">Mortgage calculator</Link>
+          </span>
+        </div>
+      )}
+
       {needsDualRoleDisclosure(myDealRoles) && (
         <p className="notice amber">You are both an agent and the lender on this deal. Give your client a written dual-role disclosure.</p>
       )}

@@ -55,6 +55,7 @@ export function NewRequestForm({ homes, clients, defaultListing, defaultClient, 
         <span className="small">This listing agent isn&apos;t on REschedule yet, so send it from your phone. It&apos;s written for you:</span>
         <p className="small" style={{ margin: 0, whiteSpace: "pre-wrap", background: "#fff", padding: 10, borderRadius: 10 }}>{state.send.body}</p>
         {state.send.href && <a className="btn primary lg block" href={state.send.href}>{state.send.label}</a>}
+        {state.alsoText && <a className="btn block" style={{ background: "#fff" }} href={state.alsoText.href}>📎 {state.alsoText.label}</a>}
         <Link href="/showings?tab=sent" className="btn block" style={{ background: "#fff" }}>Done</Link>
       </section>
     );

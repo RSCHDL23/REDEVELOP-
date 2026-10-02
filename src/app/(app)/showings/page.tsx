@@ -132,7 +132,11 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
             {x.responseNote && <p className="small" style={{ margin: 0 }}>&ldquo;{x.responseNote}&rdquo;</p>}
             {x.attachments.length > 0 && (
               <div className="chips">
-                {x.attachments.map((a) => <a key={a.id} className="chip row" style={{ color: "var(--ink)" }} href={a.url} target="_blank" rel="noreferrer">📎 {a.name}</a>)}
+                {x.attachments.map((a) => (
+                  <a key={a.id} className="chip row" style={{ color: "var(--ink)" }} href={a.url} target="_blank" rel="noreferrer" title={a.expiresAt ? `Link open until ${prettyDate(dateOf(a.expiresAt))}` : undefined}>
+                    📎 {a.name}{a.expiresAt && view === "sent" ? <span className="tiny muted">&nbsp;· until {prettyDate(dateOf(a.expiresAt), { month: "short", day: "numeric" })}</span> : null}
+                  </a>
+                ))}
               </div>
             )}
             {(x.arrivedAt || x.feedback) && (

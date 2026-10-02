@@ -6,7 +6,7 @@ import { dealTodoTemplate } from "@/lib/core/tasks";
 import { prettyDate } from "@/lib/data/dates";
 import { createDeal, type NewDealState } from "../actions";
 
-const LOANS = ["Conventional", "FHA", "VA", "USDA", "Cash", "Other"];
+const LOANS = ["Conventional", "FHA", "VA", "USDA", "NACA", "Cash", "Other"];
 
 const HOLDERS = [
   { id: "listing_brokerage", label: "Listing brokerage escrow", short: "the listing brokerage" },
@@ -138,6 +138,12 @@ export function NewDealForm({ clients, defaultClient, today, homes }: {
           </div>
         </div>
         {holder && <div className="field"><label htmlFor="earnestHolderName">Name of the {HOLDERS.find((h) => h.id === holder)?.label.toLowerCase()}</label><input id="earnestHolderName" name="earnestHolderName" className="input" maxLength={100} placeholder="e.g. Chicago Title, Downtown office" /></div>}
+        {loan === "NACA" && (
+          <div className="notice small" style={{ fontWeight: 600 }}>
+            NACA deal: allow at least a 30-day closing, use a NACA-approved settlement agent and NACA-approved inspectors, and the HAND department reviews repairs. Closing is at the NACA office.
+            {acceptance && closing && closing < addDays(acceptance, 30) && <span className="error" style={{ display: "block", marginTop: 4 }}>Closing is less than 30 days after acceptance.</span>}
+          </div>
+        )}
         <details>
           <summary className="small strong" style={{ cursor: "pointer", minHeight: 32 }}>Contract periods (days)</summary>
           <div className="grid-2" style={{ marginTop: 8 }}>

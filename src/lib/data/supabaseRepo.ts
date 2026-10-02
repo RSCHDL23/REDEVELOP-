@@ -55,8 +55,8 @@ const REQUEST_SELECT = `*, feedback:showing_feedback(*), listing:listings(addres
 async function attachmentsFor(supabase: Awaited<ReturnType<typeof createClient>>, rows: Row[]): Promise<Map<string, Attachment>> {
   const ids = [...new Set(rows.flatMap((r) => (r.attachment_ids ?? []) as string[]))];
   if (!ids.length) return new Map();
-  const { data } = await supabase.from("attachments").select("id, token, file_name").in("id", ids);
-  return new Map(((data ?? []) as Row[]).map((a) => [a.id, { id: a.id, name: a.file_name, url: `/d/${a.token}` }]));
+  const { data } = await supabase.from("attachments").select("id, token, file_name, expires_at").in("id", ids);
+  return new Map(((data ?? []) as Row[]).map((a) => [a.id, { id: a.id, name: a.file_name, url: `/d/${a.token}`, expiresAt: a.expires_at }]));
 }
 
 function toRequest(r: Row, uid: string, files: Map<string, Attachment> = new Map()): ShowingRequest {
@@ -94,6 +94,10 @@ function toClient(r: Row): Client {
     id: r.id, name: r.name, phone: r.phone ?? "", email: r.email ?? "", preApproved: r.pre_approved,
     stage: r.stage ?? "present", source: r.source ?? "manual", intent: r.intent ?? "", notes: r.notes ?? "", createdAt: r.created_at,
     closedOn: r.closed_on ?? null, remember: r.remember ?? true, reviewToken: r.review_token, reviewRequestedAt: r.review_requested_at ?? null,
+    agreementSentAt: r.agreement_sent_at ?? null, loanProgram: r.loan_program ?? "unknown",
+    approvedMonthly: r.approved_monthly_cents != null ? r.approved_monthly_cents / 100 : null,
+    currentHousing: r.current_housing_cents != null ? r.current_housing_cents / 100 : null,
+    programSteps: r.program_steps ?? [], qualifiedOn: r.qualified_on ?? null,
   };
 }
 
@@ -112,6 +116,7 @@ export const supabaseRepo: Repo = {
       reviewLinks: Array.isArray(p.review_links) ? p.review_links : [], rememberAuto: p.remember_auto ?? true, rememberChannel: p.remember_channel ?? "text",
       myResources: Array.isArray(p.my_resources) ? p.my_resources : [],
       myAgent: p.my_agent ? { name: p.my_agent.full_name, slug: p.my_agent.slug } : null,
+      esignProvider: p.esign_provider ?? null, esignUrl: p.esign_url ?? "",
     } satisfies Profile;
   },
   async updateMe(patch) {
@@ -132,6 +137,8 @@ export const supabaseRepo: Repo = {
     if (patch.rememberAuto !== undefined) row.remember_auto = patch.rememberAuto;
     if (patch.rememberChannel !== undefined) row.remember_channel = patch.rememberChannel;
     if (patch.myResources !== undefined) row.my_resources = patch.myResources.slice(0, 40);
+    if (patch.esignProvider !== undefined) row.esign_provider = patch.esignProvider;
+    if (patch.esignUrl !== undefined) row.esign_url = patch.esignUrl || null;
     // For uploads, headshotUrl and logoUrl carry the storage path of the new file.
     if (patch.headshotUrl !== undefined) row.headshot_path = patch.headshotUrl;
     if (patch.logoUrl !== undefined) row.logo_path = patch.logoUrl;
@@ -253,7 +260,7 @@ export const supabaseRepo: Repo = {
     const { supabase, uid } = await session();
     const r = check(await supabase.from("clients").insert({
       agent_id: uid, name: input.name, phone: input.phone || null, email: input.email || null, pre_approved: input.preApproved,
-      stage: input.stage ?? "present", notes: input.notes || null, intent: input.intent || null,
+      stage: input.stage ?? "present", notes: input.notes || null, intent: input.intent || null, loan_program: input.loanProgram ?? "unknown",
     }).select("*").single()) as Row;
     return toClient(r);
   },
@@ -299,6 +306,12 @@ export const supabaseRepo: Repo = {
     if (patch.notes !== undefined) row.notes = patch.notes || null;
     if (patch.phone !== undefined) row.phone = patch.phone || null;
     if (patch.email !== undefined) row.email = patch.email || null;
+    if (patch.agreementSentAt !== undefined) row.agreement_sent_at = patch.agreementSentAt;
+    if (patch.loanProgram !== undefined) row.loan_program = patch.loanProgram;
+    if (patch.approvedMonthly !== undefined) row.approved_monthly_cents = patch.approvedMonthly == null ? null : Math.round(patch.approvedMonthly * 100);
+    if (patch.currentHousing !== undefined) row.current_housing_cents = patch.currentHousing == null ? null : Math.round(patch.currentHousing * 100);
+    if (patch.programSteps !== undefined) row.program_steps = patch.programSteps;
+    if (patch.qualifiedOn !== undefined) row.qualified_on = patch.qualifiedOn;
     check(await supabase.from("clients").update(row).eq("id", id));
   },
   async markReviewRequested(clientId) {
@@ -404,6 +417,10 @@ export const supabaseRepo: Repo = {
     if (up.error) throw new Error(up.error.message);
     const row = check(await supabase.from("attachments").insert({ owner_id: uid, file_path: path, file_name: file.name.slice(0, 120), mime: file.mime, size_bytes: file.bytes.byteLength }).select("id, token").single()) as Row;
     return { id: row.id, token: row.token };
+  },
+  async extendPropertyDocs(address, untilIso) {
+    const { supabase } = await session();
+    await supabase.rpc("extend_property_docs", { p_address: address, p_until: untilIso });
   },
   async getAttachment(token) {
     const supabase = await createClient();

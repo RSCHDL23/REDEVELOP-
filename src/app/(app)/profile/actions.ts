@@ -203,3 +203,15 @@ export async function requestMlsAccess(formData: FormData) {
   if (id) await repo().requestMlsAccess(id);
   revalidatePath("/profile");
 }
+
+export async function saveEsign(_prev: FormState, formData: FormData): Promise<FormState> {
+  const provider = z.enum(["docusign", "dotloop", "authentisign", "skyslope", "adobe", "zipforms", "other"]).safeParse(formData.get("provider"));
+  if (!provider.success) return { error: "Pick your e-signature software." };
+  let url = String(formData.get("url") ?? "").trim();
+  if (url && !/^https:\/\//.test(url)) url = `https://${url.replace(/^http:\/\//, "")}`;
+  if (url && (!/^https:\/\/[^\s]+\.[^\s]+$/.test(url) || url.length > 300)) return { error: "Check the link." };
+  await repo().updateMe({ esignProvider: provider.data, esignUrl: url });
+  revalidatePath("/profile");
+  revalidatePath("/clients");
+  return { ok: "Saved." };
+}
