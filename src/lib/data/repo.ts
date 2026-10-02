@@ -1,6 +1,17 @@
 import type { Profession } from "@/lib/core/access";
 import type { ContactMethod } from "@/lib/core/messages";
-import type { ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, TourContext, WeeklyHours } from "./types";
+import type { Client, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, RequestStatus, ShowingRequest, TourContext, WeeklyHours } from "./types";
+
+export interface NewRequest {
+  /** A home in the system, or a typed-in home with its listing agent. */
+  listingId?: string;
+  manual?: { address: string; agentName: string; agentPhone: string; agentEmail: string };
+  clientId?: string;
+  buyerLabel: string;
+  startsAt: string;
+  endsAt: string;
+  method: ContactMethod;
+}
 
 /** Everything the screens need. Implemented by the demo store and by Supabase. */
 export interface Repo {
@@ -21,9 +32,19 @@ export interface Repo {
 
   listListings(): Promise<Listing[]>;
   listRequests(): Promise<ShowingRequest[]>;
-  decideRequest(id: string, status: "approved" | "declined" | "countered" | "pending"): Promise<void>;
+  /** Listing side answers, or changes its answer. A suggested time is required for "countered". */
+  decideRequest(id: string, answer: { status: "approved" | "declined" | "countered" | "pending"; proposedStartsAt?: string; proposedEndsAt?: string; note?: string }): Promise<void>;
+  /** Requester accepts the time the listing side suggested. */
+  acceptNewTime(id: string): Promise<void>;
   cancelRequest(id: string): Promise<void>;
-  createRequest(input: { listingId: string; startsAt: string; endsAt: string; buyerLabel: string; method: ContactMethod }): Promise<void>;
+  /** Requester nudged the listing agent (reminder or resend). */
+  markReminded(id: string): Promise<void>;
+  /** Requester records the listing agent's answer for a typed-in home. */
+  recordAnswer(id: string, status: RequestStatus): Promise<void>;
+  createRequest(input: NewRequest): Promise<ShowingRequest>;
+
+  listClients(): Promise<Client[]>;
+  addClient(input: Omit<Client, "id">): Promise<Client>;
 
   getTourContext(date: string): Promise<TourContext>;
 

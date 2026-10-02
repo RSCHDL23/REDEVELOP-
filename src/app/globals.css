@@ -16,6 +16,15 @@
   --amber: #8a4b08;
   --red-soft: #f8e5e3;
   --red: #a12a2a;
+  --red-line: #e3a9a3;
+  --green-soft: #e2f4e7;
+  --green: #1e6b3a;
+  --green-line: #8fcea3;
+  --yellow-soft: #fdf3c8;
+  --yellow: #6f5300;
+  --yellow-line: #e8cf6a;
+  --wait-soft: #eaf6fd;
+  --wait-line: #9ad5f3;
   --radius: 14px;
   --font: "Nunito", ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: light;
@@ -94,6 +103,33 @@ textarea.input { padding: 12px 14px; min-height: 90px; resize: vertical; }
 
 .bar { height: 8px; border-radius: 4px; background: #e6e9ed; overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--blue); border-radius: 4px; }
+
+/* Showing status colors: the whole card carries the answer. */
+.status-card { border-left-width: 6px; }
+.status-pending { background: var(--wait-soft); border-color: var(--wait-line); }
+.status-approved { background: var(--green-soft); border-color: var(--green-line); }
+.status-countered { background: var(--yellow-soft); border-color: var(--yellow-line); }
+.status-declined { background: var(--red-soft); border-color: var(--red-line); }
+.status-cancelled { background: #eef0f2; border-color: var(--line-2); opacity: 0.75; }
+.status-icon { width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 900; }
+.status-pending .status-icon { background: var(--blue-deep); }
+.status-approved .status-icon { background: var(--green); }
+.status-countered .status-icon { background: #b98a00; }
+.status-declined .status-icon { background: var(--red); }
+.status-cancelled .status-icon { background: var(--muted); }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.dot.pending { background: var(--blue-deep); }
+.dot.approved { background: var(--green); }
+.dot.countered { background: #b98a00; }
+.dot.declined { background: var(--red); }
+.btn.green { background: var(--green); border-color: var(--green); color: #fff; }
+.btn.yellow { background: #f2d24b; border-color: #e1bd2a; color: var(--ink); }
+.btn.red { background: var(--red); border-color: var(--red); color: #fff; }
+.thumb { width: 84px; height: 72px; flex-shrink: 0; border-radius: 10px; object-fit: cover; background: var(--line); }
+.thumb.empty { display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.suggest { position: absolute; z-index: 5; left: 0; right: 0; top: 100%; margin: 4px 0 0; padding: 4px; list-style: none; background: #fff; border: 1px solid var(--line-2); border-radius: 12px; box-shadow: 0 8px 24px rgba(11, 13, 14, 0.12); max-height: 300px; overflow-y: auto; }
+.suggest li button { width: 100%; text-align: left; background: none; border: 0; padding: 10px; border-radius: 8px; cursor: pointer; display: flex; gap: 10px; align-items: center; }
+.suggest li button:hover, .suggest li button[aria-selected="true"] { background: var(--ground); }
 
 /* Bottom tab bar */
 .tabbar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 520px; display: flex; background: var(--ink); padding: 8px 0 calc(10px + env(safe-area-inset-bottom)); z-index: 10; }

@@ -6,7 +6,7 @@ import "server-only";
 import { contractMilestones, addDays } from "@/lib/core/deadlines";
 import { hm, subtract, type Window } from "@/lib/core/time";
 import type { Repo } from "./repo";
-import type { AgentSummary, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, WeeklyHours } from "./types";
+import type { AgentSummary, Client, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, WeeklyHours } from "./types";
 import { nextSaturday, todayISO, toTimestamp, weekdayOf } from "./dates";
 
 const agent = (id: string, name: string, phone: string, preferred: AgentSummary["contact"]["preferred"], extra: Partial<AgentSummary> = {}): AgentSummary => ({
@@ -23,6 +23,7 @@ interface Store {
   licenses: License[];
   listings: Listing[];
   requests: ShowingRequest[];
+  clients: Client[];
   deals: Deal[];
   hours: WeeklyHours[];
   homeWindows: Record<string, Window[]>;
@@ -33,13 +34,13 @@ function seed(): Store {
   const sat = nextSaturday(today);
   const me: AgentSummary = agent(ME_ID, "Donna White", "(708) 555-0123", "app", { brokerage: "D. White Realty" });
   const listings: Listing[] = [
-    { id: "sem", address: "3315 N Seminary Ave", city: "Chicago", state: "IL", lat: 41.9415, lng: -87.6566, beds: 3, baths: 2, sqft: 1800, instantShowings: false, showingMinutes: 30, occupancy: "owner", note: "Seller out 10 to 1", listingAgent: agent("cruz", "Alana Cruz", "(312) 555-0141", "text", { onApp: true }) },
-    { id: "gra", address: "1340 W Granville Ave #3", city: "Chicago", state: "IL", lat: 41.9945, lng: -87.6625, beds: 3, baths: 2, sqft: 1400, instantShowings: true, showingMinutes: 30, occupancy: "owner", note: "Condo hours 10 to 12 and 3 to 5", listingAgent: agent("haddad", "Omar Haddad", "(773) 555-0102", "online", { contact: { preferred: "online", textAfterCall: false, onlineUrl: "https://example.com/schedule/omar" } }) },
-    { id: "her", address: "4417 N Hermitage Ave", city: "Chicago", state: "IL", lat: 41.9615, lng: -87.6735, beds: 3, baths: 2, sqft: 1650, instantShowings: false, showingMinutes: 30, occupancy: "owner", note: "Seller home until 1", listingAgent: agent("novak", "Chris Novak", "(773) 555-0188", "call") },
-    { id: "gid", address: "2519 W Giddings St", city: "Chicago", state: "IL", lat: 41.9685, lng: -87.6905, beds: 3, baths: 2, sqft: 1500, instantShowings: true, showingMinutes: 30, occupancy: "vacant", note: "Vacant, lockbox", listingAgent: agent("patel", "Nina Patel", "(312) 555-0177", "app") },
-    { id: "elm", address: "1029 Elmwood Ave", city: "Evanston", state: "IL", lat: 42.0405, lng: -87.6825, beds: 3, baths: 2, sqft: 1700, instantShowings: false, showingMinutes: 30, occupancy: "tenant", note: "Tenant blocks 12 to 2", listingAgent: agent("tran", "Kevin Tran", "(847) 555-0119", "email") },
-    { id: "maple", address: "418 Maple Ave", city: "Oak Park", state: "IL", lat: 41.8805, lng: -87.7975, beds: 3, baths: 2, sqft: 1600, instantShowings: false, showingMinutes: 30, occupancy: "owner", note: "Your listing", listingAgent: me },
-    { id: "leland", address: "2840 W Leland Ave", city: "Chicago", state: "IL", lat: 41.9665, lng: -87.6985, beds: 6, baths: 3, sqft: 3200, instantShowings: false, showingMinutes: 45, occupancy: "tenant", note: "Your listing · 3-flat", listingAgent: me },
+    { id: "sem", photoUrl: "/demo/homes/sem.svg", source: "mls", address: "3315 N Seminary Ave", city: "Chicago", state: "IL", lat: 41.9415, lng: -87.6566, beds: 3, baths: 2, sqft: 1800, instantShowings: false, showingMinutes: 30, occupancy: "owner", note: "Seller out 10 to 1", listingAgent: agent("cruz", "Alana Cruz", "(312) 555-0141", "text", { onApp: true }) },
+    { id: "gra", photoUrl: "/demo/homes/gra.svg", source: "mls", address: "1340 W Granville Ave #3", city: "Chicago", state: "IL", lat: 41.9945, lng: -87.6625, beds: 3, baths: 2, sqft: 1400, instantShowings: true, showingMinutes: 30, occupancy: "owner", note: "Condo hours 10 to 12 and 3 to 5", listingAgent: agent("haddad", "Omar Haddad", "(773) 555-0102", "online", { contact: { preferred: "online", textAfterCall: false, onlineUrl: "https://example.com/schedule/omar" } }) },
+    { id: "her", photoUrl: "/demo/homes/her.svg", source: "mls", address: "4417 N Hermitage Ave", city: "Chicago", state: "IL", lat: 41.9615, lng: -87.6735, beds: 3, baths: 2, sqft: 1650, instantShowings: false, showingMinutes: 30, occupancy: "owner", note: "Seller home until 1", listingAgent: agent("novak", "Chris Novak", "(773) 555-0188", "call") },
+    { id: "gid", photoUrl: "/demo/homes/gid.svg", source: "mls", address: "2519 W Giddings St", city: "Chicago", state: "IL", lat: 41.9685, lng: -87.6905, beds: 3, baths: 2, sqft: 1500, instantShowings: true, showingMinutes: 30, occupancy: "vacant", note: "Vacant, lockbox", listingAgent: agent("patel", "Nina Patel", "(312) 555-0177", "app") },
+    { id: "elm", photoUrl: "/demo/homes/elm.svg", source: "mls", address: "1029 Elmwood Ave", city: "Evanston", state: "IL", lat: 42.0405, lng: -87.6825, beds: 3, baths: 2, sqft: 1700, instantShowings: false, showingMinutes: 30, occupancy: "tenant", note: "Tenant blocks 12 to 2", listingAgent: agent("tran", "Kevin Tran", "(847) 555-0119", "email") },
+    { id: "maple", photoUrl: "/demo/homes/maple.svg", source: "mls", address: "418 Maple Ave", city: "Oak Park", state: "IL", lat: 41.8805, lng: -87.7975, beds: 3, baths: 2, sqft: 1600, instantShowings: false, showingMinutes: 30, occupancy: "owner", note: "Your listing", listingAgent: me },
+    { id: "leland", photoUrl: "/demo/homes/leland.svg", source: "mls", address: "2840 W Leland Ave", city: "Chicago", state: "IL", lat: 41.9665, lng: -87.6985, beds: 6, baths: 3, sqft: 3200, instantShowings: false, showingMinutes: 45, occupancy: "tenant", note: "Your listing · 3-flat", listingAgent: me },
   ];
   const homeWindows: Record<string, Window[]> = {
     sem: [[hm(10), hm(13)]],
@@ -48,16 +49,37 @@ function seed(): Store {
     gid: [[hm(9), hm(17)]],
     elm: [[hm(11), hm(12)], [hm(14), hm(16)]],
   };
-  const req = (id: string, listingId: string, other: string, buyer: string, date: string, start: number, len: number, direction: ShowingRequest["direction"], status: ShowingRequest["status"] = "pending"): ShowingRequest => ({
-    id, listingId, address: listings.find((l) => l.id === listingId)!.address, otherAgentName: other, buyerLabel: buyer,
-    startsAt: toTimestamp(date, start), endsAt: toTimestamp(date, start + len), status, direction,
-  });
+  const askers: Record<string, AgentSummary> = {
+    bell: agent("bell", "Marcus Bell", "(630) 555-0150", "app"),
+    lee: agent("lee", "Jordan Lee", "(773) 555-0164", "text"),
+    shah: agent("shah", "Priya Shah", "(312) 555-0129", "app"),
+  };
+  const req = (id: string, listingId: string, other: AgentSummary | null, buyer: string, date: string, start: number, len: number, direction: ShowingRequest["direction"], status: ShowingRequest["status"] = "pending", extra: Partial<ShowingRequest> = {}): ShowingRequest => {
+    const l = listings.find((x) => x.id === listingId)!;
+    const who = other ?? l.listingAgent;
+    return {
+      id, listingId, address: l.address, photoUrl: l.photoUrl, otherAgent: who, otherAgentName: who.name, buyerLabel: buyer,
+      startsAt: toTimestamp(date, start), endsAt: toTimestamp(date, start + len), status, direction,
+      proposedStartsAt: null, proposedEndsAt: null, responseNote: "", remindedAt: null, reminderCount: 0, ...extra,
+    };
+  };
   const requests = [
-    req("r1", "maple", "Marcus Bell", "Pre-approved buyers", today, hm(15), 30, "incoming"),
-    req("r2", "maple", "Jordan Lee", "Pre-approved buyers", addDays(today, 1), hm(10), 30, "incoming"),
-    req("r3", "leland", "Priya Shah", "Second showing", sat, hm(13), 45, "incoming"),
-    req("s1", "sem", "Alana Cruz", "Maria & Luis Alvarez", today, hm(9, 30), 30, "sent", "approved"),
-    req("s2", "elm", "Kevin Tran", "Maria & Luis Alvarez", sat, hm(11), 30, "sent"),
+    req("r1", "maple", askers.bell, "Pre-approved buyers", today, hm(15), 30, "incoming"),
+    req("r2", "maple", askers.lee, "Pre-approved buyers", addDays(today, 1), hm(10), 30, "incoming"),
+    req("r3", "leland", askers.shah, "Second showing", sat, hm(13), 45, "incoming"),
+    req("r4", "leland", askers.bell, "First-time buyers", addDays(today, 2), hm(17), 30, "incoming", "approved"),
+    req("s1", "sem", null, "Maria & Luis Alvarez", today, hm(9, 30), 30, "sent", "approved"),
+    req("s2", "elm", null, "Maria & Luis Alvarez", sat, hm(11), 30, "sent"),
+    req("s3", "her", null, "Ana Price", sat, hm(14), 30, "sent", "countered", {
+      proposedStartsAt: toTimestamp(sat, hm(14, 30)), proposedEndsAt: toTimestamp(sat, hm(15)), responseNote: "Sellers are home until 2:30.",
+    }),
+    req("s4", "gra", null, "The Greens", addDays(today, 3), hm(16), 30, "sent", "declined"),
+  ];
+  const clients: Client[] = [
+    { id: "c-alvarez", name: "Maria & Luis Alvarez", phone: "(708) 555-0111", email: "alvarez@example.com", preApproved: true },
+    { id: "c-price", name: "Ana Price", phone: "(312) 555-0160", email: "ana@example.com", preApproved: true },
+    { id: "c-greens", name: "The Greens", phone: "(773) 555-0172", email: "greens@example.com", preApproved: false },
+    { id: "c-greene", name: "Tasha Greene", phone: "(219) 555-0135", email: "tasha@example.com", preApproved: true },
   ];
   const mkDeal = (id: string, address: string, city: string, side: Deal["side"], stage: string, acceptance: string, closing: string, loanType: string, clientName: string, extra: Partial<Deal> = {}): Deal => {
     const ms = contractMilestones({ acceptance, closing, mortgageContingencyDays: loanType === "Cash" ? undefined : 21 });
@@ -110,7 +132,7 @@ function seed(): Store {
       { id: "lic-in", profession: "real_estate_broker", state: "IN", number: "[LICENSE]", sponsor: "D. White Realty", expiresOn: null, ceHours: 4, status: "verified" },
       { id: "lic-mlo", profession: "mortgage_loan_originator", state: "IL", number: "[NMLS ID]", sponsor: "[Mortgage company]", expiresOn: null, ceHours: 8, status: "verified" },
     ],
-    listings, requests, deals, hours, homeWindows,
+    listings, requests, clients, deals, hours, homeWindows,
   };
 }
 
@@ -132,13 +154,52 @@ export const demoRepo: Repo = {
   async removeLicense(id) { const s = store(); s.licenses = s.licenses.filter((l) => l.id !== id); },
   async listListings() { return store().listings; },
   async listRequests() { return [...store().requests].sort((a, b) => a.startsAt.localeCompare(b.startsAt)); },
-  async decideRequest(id, status) { const r = store().requests.find((x) => x.id === id); if (r && r.direction === "incoming") r.status = status; },
+  async decideRequest(id, answer) {
+    const r = store().requests.find((x) => x.id === id);
+    if (!r || r.direction !== "incoming") return;
+    r.status = answer.status;
+    r.proposedStartsAt = answer.status === "countered" ? answer.proposedStartsAt ?? null : null;
+    r.proposedEndsAt = answer.status === "countered" ? answer.proposedEndsAt ?? null : null;
+    r.responseNote = answer.note ?? "";
+  },
+  async acceptNewTime(id) {
+    const r = store().requests.find((x) => x.id === id);
+    if (!r || r.direction !== "sent" || r.status !== "countered" || !r.proposedStartsAt || !r.proposedEndsAt) return;
+    Object.assign(r, { startsAt: r.proposedStartsAt, endsAt: r.proposedEndsAt, status: "approved", proposedStartsAt: null, proposedEndsAt: null });
+  },
   async cancelRequest(id) { const r = store().requests.find((x) => x.id === id); if (r && r.direction === "sent") r.status = "cancelled"; },
+  async markReminded(id) {
+    const r = store().requests.find((x) => x.id === id);
+    if (r && r.direction === "sent") { r.remindedAt = new Date().toISOString(); r.reminderCount += 1; }
+  },
+  async recordAnswer(id, status) {
+    const r = store().requests.find((x) => x.id === id);
+    if (r && r.direction === "sent" && r.listingId === null) r.status = status;
+  },
   async createRequest(input) {
     const s = store();
-    const l = s.listings.find((x) => x.id === input.listingId);
-    if (!l) throw new Error("Listing not found");
-    s.requests.push({ id: `s-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, listingId: l.id, address: l.address, otherAgentName: l.listingAgent.name, buyerLabel: input.buyerLabel, startsAt: input.startsAt, endsAt: input.endsAt, status: l.instantShowings ? "approved" : "pending", direction: "sent" });
+    const l = input.listingId ? s.listings.find((x) => x.id === input.listingId) : undefined;
+    if (input.listingId && !l) throw new Error("Listing not found");
+    if (!l && !input.manual) throw new Error("Pick a home");
+    const m = input.manual;
+    const who: AgentSummary = l ? l.listingAgent : {
+      id: "", name: m!.agentName || "Listing agent", phone: m!.agentPhone, email: m!.agentEmail, brokerage: "", onApp: false,
+      contact: { preferred: m!.agentPhone ? "text" : "email", textAfterCall: false },
+    };
+    const created: ShowingRequest = {
+      id: `s-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, listingId: l?.id ?? null, address: l?.address ?? m!.address,
+      photoUrl: l?.photoUrl ?? null, otherAgent: who, otherAgentName: who.name, buyerLabel: input.buyerLabel,
+      startsAt: input.startsAt, endsAt: input.endsAt, status: l?.instantShowings ? "approved" : "pending", direction: "sent",
+      proposedStartsAt: null, proposedEndsAt: null, responseNote: "", remindedAt: null, reminderCount: 0,
+    };
+    s.requests.push(created);
+    return created;
+  },
+  async listClients() { return [...store().clients].sort((a, b) => a.name.localeCompare(b.name)); },
+  async addClient(input) {
+    const c: Client = { id: `c-${Date.now()}`, ...input };
+    store().clients.push(c);
+    return c;
   },
   async getTourContext(date) {
     const s = store();

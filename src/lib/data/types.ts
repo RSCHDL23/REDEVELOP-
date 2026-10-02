@@ -63,19 +63,42 @@ export interface Listing {
   showingMinutes: number;
   occupancy: "owner" | "vacant" | "tenant";
   note: string;
+  photoUrl: string | null;
+  source: "mls" | "fsbo" | "app";
   listingAgent: AgentSummary;
 }
 
+/** A buyer (or other client) saved to an agent's profile. */
+export interface Client {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  preApproved: boolean;
+}
+
+export type RequestStatus = "pending" | "approved" | "declined" | "countered" | "cancelled";
+
 export interface ShowingRequest {
   id: string;
-  listingId: string;
+  /** Null when the home was typed in (not in the MLS, FSBO or REschedule). */
+  listingId: string | null;
   address: string;
+  photoUrl: string | null;
+  /** Incoming: the agent asking to show. Sent: the listing agent. */
+  otherAgent: AgentSummary;
   otherAgentName: string;
   buyerLabel: string;
   startsAt: string; // ISO
   endsAt: string;
-  status: "pending" | "approved" | "declined" | "countered" | "cancelled";
+  status: RequestStatus;
   direction: "incoming" | "sent";
+  /** The time the listing side suggested instead. */
+  proposedStartsAt: string | null;
+  proposedEndsAt: string | null;
+  responseNote: string;
+  remindedAt: string | null;
+  reminderCount: number;
 }
 
 export interface Person {

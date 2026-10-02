@@ -178,3 +178,16 @@ describe("drive estimates", () => {
     expect(mins).toBeLessThan(70);
   });
 });
+
+import { nudgeDraft } from "./messages";
+describe("reminders and resends", () => {
+  const s = { name: "Donna White", brokerage: "D. White Realty", phone: "(708) 555-0123" };
+  const d = { listingAgentFirstName: "Kevin", address: "1029 Elmwood Ave", dayLabel: "Sat 10/3", timeLabel: "11:00–11:30 AM", buyerNames: "Maria & Luis", preApproved: true };
+  it("uses the listing agent's preferred way", () => {
+    expect(nudgeDraft("remind", s, d, { preferred: "email", email: "kevin@example.com", phone: "8475550119" }).method).toBe("email");
+    expect(nudgeDraft("remind", s, d, { preferred: "text", phone: "8475550119" }).body).toContain("following up");
+    expect(nudgeDraft("resend", s, d, { preferred: "text", phone: "8475550119" }).body).toContain("I would like to show");
+    expect(nudgeDraft("remind", s, d, { preferred: "app", onApp: true }).method).toBe("app");
+    expect(nudgeDraft("remind", s, d, { preferred: "call", phone: "8475550119" }).method).toBe("call");
+  });
+});

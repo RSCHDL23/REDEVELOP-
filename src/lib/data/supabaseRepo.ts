@@ -5,7 +5,7 @@ import { hm, subtract, type Window } from "@/lib/core/time";
 import { contractMilestones } from "@/lib/core/deadlines";
 import type { Role } from "@/lib/core/access";
 import type { Repo } from "./repo";
-import type { AgentSummary, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, TourContext, WeeklyHours } from "./types";
+import type { AgentSummary, Client, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, TourContext, WeeklyHours } from "./types";
 import { dateOf, minutesOfDay, toTimestamp, weekdayOf } from "./dates";
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -42,11 +42,31 @@ function toListing(r: Row): Listing {
     id: r.id, address: r.address, city: r.city, state: r.state, lat: r.lat ?? 41.88, lng: r.lng ?? -87.63,
     beds: Number(r.beds ?? 0), baths: Number(r.baths ?? 0), sqft: r.sqft, instantShowings: r.instant_showings,
     showingMinutes: r.showing_minutes, occupancy: r.occupancy, note: r.occupancy === "tenant" ? "Tenant-occupied" : "",
+    photoUrl: r.photo_url ?? null, source: r.source === "fsbo" ? "fsbo" : r.source === "app" ? "app" : "mls",
     listingAgent: toAgent(r.agent, r.agent?.contact_preferences ?? null),
   };
 }
 
-const LISTING_SELECT = "*, agent:profiles!listings_listing_agent_id_fkey(id, full_name, phone, email, brokerages(name), contact_preferences(*))";
+const AGENT_FIELDS = "id, full_name, phone, email, brokerages(name), contact_preferences(*)";
+const LISTING_SELECT = `*, agent:profiles!listings_listing_agent_id_fkey(${AGENT_FIELDS})`;
+const REQUEST_SELECT = `*, listing:listings(address, city, photo_url, listing_agent_id, agent:profiles!listings_listing_agent_id_fkey(${AGENT_FIELDS})), requester:profiles!showing_requests_requesting_agent_id_fkey(${AGENT_FIELDS})`;
+
+function toRequest(r: Row, uid: string): ShowingRequest {
+  const sent = r.requesting_agent_id === uid;
+  const typedIn = !r.listing_id;
+  const other: AgentSummary = sent
+    ? typedIn
+      ? { id: "", name: r.manual_agent_name || "Listing agent", phone: r.manual_agent_phone ?? "", email: r.manual_agent_email ?? "", brokerage: "", onApp: false, contact: { preferred: r.manual_agent_phone ? "text" : "email", textAfterCall: false } }
+      : toAgent(r.listing?.agent ?? null, r.listing?.agent?.contact_preferences ?? null)
+    : toAgent(r.requester ?? null, r.requester?.contact_preferences ?? null);
+  return {
+    id: r.id, listingId: r.listing_id, address: r.listing?.address ?? r.manual_address ?? "", photoUrl: r.listing?.photo_url ?? null,
+    otherAgent: other, otherAgentName: other.name, buyerLabel: r.buyer_label,
+    startsAt: r.starts_at, endsAt: r.ends_at, status: r.status, direction: sent ? "sent" : "incoming",
+    proposedStartsAt: r.proposed_starts_at, proposedEndsAt: r.proposed_ends_at, responseNote: r.response_note ?? "",
+    remindedAt: r.reminded_at, reminderCount: Number(r.reminder_count ?? 0),
+  };
+}
 
 export const supabaseRepo: Repo = {
   async getMe() {
@@ -120,33 +140,58 @@ export const supabaseRepo: Repo = {
   },
   async listRequests() {
     const { supabase, uid } = await session();
-    const rows = check(await supabase.from("showing_requests")
-      .select("*, listing:listings(address, listing_agent_id, agent:profiles!listings_listing_agent_id_fkey(full_name)), requester:profiles!showing_requests_requesting_agent_id_fkey(full_name)")
-      .order("starts_at")) as Row[];
-    return rows.map((r) => {
-      const sent = r.requesting_agent_id === uid;
-      return {
-        id: r.id, listingId: r.listing_id, address: r.listing?.address ?? "", buyerLabel: r.buyer_label,
-        otherAgentName: sent ? r.listing?.agent?.full_name ?? "Listing agent" : r.requester?.full_name ?? "Buyer's agent",
-        startsAt: r.starts_at, endsAt: r.ends_at, status: r.status, direction: sent ? "sent" : "incoming",
-      } satisfies ShowingRequest;
-    });
+    const rows = check(await supabase.from("showing_requests").select(REQUEST_SELECT).order("starts_at").limit(500)) as Row[];
+    return rows.map((r) => toRequest(r, uid));
   },
-  async decideRequest(id, status) {
+  async decideRequest(id, answer) {
     const { supabase } = await session();
-    check(await supabase.from("showing_requests").update({ status }).eq("id", id));
+    const countered = answer.status === "countered";
+    check(await supabase.from("showing_requests").update({
+      status: answer.status,
+      proposed_starts_at: countered ? answer.proposedStartsAt ?? null : null,
+      proposed_ends_at: countered ? answer.proposedEndsAt ?? null : null,
+      response_note: answer.note?.slice(0, 280) || null,
+    }).eq("id", id));
+  },
+  async acceptNewTime(id) {
+    const { supabase } = await session();
+    const r = check(await supabase.from("showing_requests").select("proposed_starts_at, proposed_ends_at").eq("id", id).single()) as Row;
+    if (!r.proposed_starts_at) return;
+    check(await supabase.from("showing_requests").update({ status: "approved", starts_at: r.proposed_starts_at, ends_at: r.proposed_ends_at }).eq("id", id));
   },
   async cancelRequest(id) {
     const { supabase } = await session();
     check(await supabase.from("showing_requests").update({ status: "cancelled" }).eq("id", id));
   },
+  async markReminded(id) {
+    const { supabase } = await session();
+    const r = check(await supabase.from("showing_requests").select("reminder_count").eq("id", id).single()) as Row;
+    check(await supabase.from("showing_requests").update({ reminded_at: new Date().toISOString(), reminder_count: Number(r.reminder_count ?? 0) + 1 }).eq("id", id));
+  },
+  async recordAnswer(id, status) {
+    const { supabase } = await session();
+    check(await supabase.from("showing_requests").update({ status }).eq("id", id).is("listing_id", null));
+  },
   async createRequest(input) {
     const { supabase, uid } = await session();
     // The listing side approves in the app. (Next step: auto-approve instant-showing homes in the database.)
-    check(await supabase.from("showing_requests").insert({
-      listing_id: input.listingId, requesting_agent_id: uid, buyer_label: input.buyerLabel,
+    const row = check(await supabase.from("showing_requests").insert({
+      listing_id: input.listingId ?? null, requesting_agent_id: uid, buyer_label: input.buyerLabel, client_id: input.clientId ?? null,
       starts_at: input.startsAt, ends_at: input.endsAt, method: input.method,
-    }));
+      manual_address: input.manual?.address ?? null, manual_agent_name: input.manual?.agentName || null,
+      manual_agent_phone: input.manual?.agentPhone || null, manual_agent_email: input.manual?.agentEmail || null,
+    }).select(REQUEST_SELECT).single()) as Row;
+    return toRequest(row, uid);
+  },
+  async listClients() {
+    const { supabase, uid } = await session();
+    const rows = check(await supabase.from("clients").select("*").eq("agent_id", uid).order("name")) as Row[];
+    return rows.map((r) => ({ id: r.id, name: r.name, phone: r.phone ?? "", email: r.email ?? "", preApproved: r.pre_approved }) satisfies Client);
+  },
+  async addClient(input) {
+    const { supabase, uid } = await session();
+    const r = check(await supabase.from("clients").insert({ agent_id: uid, name: input.name, phone: input.phone || null, email: input.email || null, pre_approved: input.preApproved }).select("*").single()) as Row;
+    return { id: r.id, name: r.name, phone: r.phone ?? "", email: r.email ?? "", preApproved: r.pre_approved };
   },
 
   async getTourContext(date) {

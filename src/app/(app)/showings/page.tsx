@@ -1,28 +1,61 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { repo } from "@/lib/data";
+import type { RequestStatus, ShowingRequest } from "@/lib/data/types";
 import { dateOf, minutesOfDay, prettyDate } from "@/lib/data/dates";
+import { nudgeFor } from "@/lib/data/requestMessages";
 import { formatClock } from "@/lib/core/time";
 import { Empty } from "@/components/ui";
-import { cancel, decide } from "./actions";
+import { IncomingResponse, SentActions } from "./Responses";
 
 export const metadata: Metadata = { title: "Showings" };
 
-const STATUS: Record<string, { label: string; tone: string }> = {
-  pending: { label: "Waiting", tone: "amber" },
-  approved: { label: "Confirmed", tone: "blue" },
-  declined: { label: "Declined", tone: "red" },
-  countered: { label: "New time suggested", tone: "amber" },
-  cancelled: { label: "Cancelled", tone: "" },
+const STATUS: Record<RequestStatus, { label: string; icon: string }> = {
+  pending: { label: "Waiting", icon: "…" },
+  approved: { label: "Confirmed", icon: "✓" },
+  countered: { label: "New time suggested", icon: "↻" },
+  declined: { label: "Declined", icon: "✕" },
+  cancelled: { label: "Cancelled", icon: "–" },
 };
+const FILTERS: { id: "all" | RequestStatus; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "pending", label: "Waiting" },
+  { id: "approved", label: "Confirmed" },
+  { id: "countered", label: "New time" },
+  { id: "declined", label: "Declined" },
+];
 
-export default async function ShowingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-  const { tab = "incoming" } = await searchParams;
+const when = (start: string, end: string) =>
+  `${prettyDate(dateOf(start))} · ${formatClock(minutesOfDay(start))}–${formatClock(minutesOfDay(end))}`;
+
+function ago(iso: string): string {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  if (mins < 24 * 60) return `${Math.round(mins / 60)} hr ago`;
+  return `${Math.round(mins / 1440)} days ago`;
+}
+
+function Photo({ r }: { r: ShowingRequest }) {
+  return r.photoUrl
+    ? <img src={r.photoUrl} alt={`Photo of ${r.address}`} className="thumb" />
+    : (
+      <span className="thumb empty" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" /></svg>
+      </span>
+    );
+}
+
+export default async function ShowingsPage({ searchParams }: { searchParams: Promise<{ tab?: string; show?: string }> }) {
+  const { tab = "incoming", show = "all" } = await searchParams;
   const view = tab === "sent" ? "sent" : "incoming";
-  const requests = (await repo().listRequests())
-    .filter((r) => r.direction === view)
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  const waiting = requests.filter((r) => r.status === "pending").length;
+  const r = repo();
+  const [all, me] = await Promise.all([r.listRequests(), r.getMe()]);
+  const mine = all.filter((x) => x.direction === view).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const filter = FILTERS.some((f) => f.id === show) ? show : "all";
+  const shown = filter === "all" ? mine.filter((x) => x.status !== "cancelled") : mine.filter((x) => x.status === filter);
+  const count = (id: string) => (id === "all" ? mine.filter((x) => x.status !== "cancelled").length : mine.filter((x) => x.status === id).length);
+  const href = (t: string, s = "all") => `/showings?tab=${t}${s !== "all" ? `&show=${s}` : ""}`;
 
   return (
     <main className="page">
@@ -31,40 +64,82 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
         <Link href="/showings/new" className="btn primary">+ Request</Link>
       </header>
 
-      <nav className="chips" aria-label="Which showings">
-        <Link href="/showings?tab=incoming" className={`chip row ${view === "incoming" ? "on" : ""}`} aria-current={view === "incoming" ? "page" : undefined} style={{ color: view === "incoming" ? "#fff" : "var(--ink)" }}>On my listings</Link>
-        <Link href="/showings?tab=sent" className={`chip row ${view === "sent" ? "on" : ""}`} aria-current={view === "sent" ? "page" : undefined} style={{ color: view === "sent" ? "#fff" : "var(--ink)" }}>I requested</Link>
+      <nav className="grid-2" aria-label="Which showings">
+        {(["incoming", "sent"] as const).map((t) => (
+          <Link key={t} href={href(t)} className={`btn block ${view === t ? "dark" : ""}`} aria-current={view === t ? "page" : undefined}>
+            {t === "incoming" ? "On my listings" : "I requested"}
+            {count("pending") > 0 && view === t && <span className="pill solid">{count("pending")}</span>}
+          </Link>
+        ))}
       </nav>
 
-      {view === "incoming" && waiting > 0 && <p className="notice amber">{waiting} waiting on your approval</p>}
-      {requests.length === 0 && <Empty>{view === "incoming" ? "No one has asked to show your listings yet." : "You haven't requested any showings yet."}</Empty>}
+      <nav className="chips" aria-label="Filter by answer">
+        {FILTERS.map((f) => (
+          <Link
+            key={f.id}
+            href={href(view, f.id)}
+            className={`chip row ${filter === f.id ? "on" : ""}`}
+            aria-current={filter === f.id ? "page" : undefined}
+            style={{ color: filter === f.id ? "#fff" : "var(--ink)", gap: 6 }}
+          >
+            {f.id !== "all" && <span className={`dot ${f.id}`} aria-hidden="true" />}
+            {f.label} <span className="tabular" style={{ opacity: 0.7 }}>{count(f.id)}</span>
+          </Link>
+        ))}
+      </nav>
 
-      {requests.map((r) => {
-        const s = STATUS[r.status];
+      {shown.length === 0 && (
+        <Empty>
+          {filter !== "all" ? "Nothing here right now." : view === "incoming" ? "No one has asked to show your listings yet." : "You haven't requested any showings yet."}
+        </Empty>
+      )}
+
+      {shown.map((x) => {
+        const s = STATUS[x.status];
+        const agentFirst = x.otherAgent.name.split(" ")[0] || "the listing agent";
+        const remind = view === "sent" ? nudgeFor("remind", x, me) : null;
+        const resend = view === "sent" ? nudgeFor("resend", x, me) : null;
         return (
-          <article key={r.id} className={`card ${r.status === "pending" && view === "incoming" ? "accent" : ""}`}>
-            <div className="between" style={{ alignItems: "flex-start" }}>
-              <div className="stack" style={{ gap: 2 }}>
-                <span className="strong">{r.address}</span>
-                <span className="small muted tabular">
-                  {prettyDate(dateOf(r.startsAt))} · {formatClock(minutesOfDay(r.startsAt))}–{formatClock(minutesOfDay(r.endsAt))}
-                </span>
+          <article key={x.id} className={`card status-card status-${x.status}`} aria-label={`${x.address}, ${s.label}`}>
+            <div className="row" style={{ alignItems: "flex-start" }}>
+              <Photo r={x} />
+              <div className="stack" style={{ gap: 2, flex: 1, minWidth: 0 }}>
+                <span className="strong">{x.address}</span>
+                <span className="small tabular strong">{when(x.startsAt, x.endsAt)}</span>
                 <span className="small muted">
-                  {view === "incoming" ? `${r.otherAgentName} · ${r.buyerLabel}` : `${r.buyerLabel} · listed by ${r.otherAgentName}`}
+                  {view === "incoming" ? `${x.otherAgent.name} · ${x.buyerLabel}` : `${x.buyerLabel} · ${x.otherAgent.name}`}
                 </span>
               </div>
-              <span className={`pill ${s.tone}`}>{s.label}</span>
+              <span className="status-icon" role="img" aria-label={s.label} title={s.label}>{s.icon}</span>
             </div>
 
-            {view === "incoming" && r.status === "pending" && (
-              <div className="grid-3">
-                <form action={decide}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="status" value="approved" /><button className="btn primary block">Approve</button></form>
-                <form action={decide}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="status" value="countered" /><button className="btn block">New time</button></form>
-                <form action={decide}><input type="hidden" name="id" value={r.id} /><input type="hidden" name="status" value="declined" /><button className="btn danger block">Decline</button></form>
-              </div>
+            {x.status === "countered" && x.proposedStartsAt && x.proposedEndsAt && (
+              <p className="small" style={{ margin: 0 }}>
+                <span className="strong">{view === "incoming" ? "You suggested" : `${agentFirst} suggested`}:</span>{" "}
+                <span className="tabular strong">{when(x.proposedStartsAt, x.proposedEndsAt)}</span>
+              </p>
             )}
-            {view === "sent" && (r.status === "pending" || r.status === "approved" || r.status === "countered") && (
-              <form action={cancel}><input type="hidden" name="id" value={r.id} /><button className="btn danger block">Cancel showing</button></form>
+            {x.responseNote && <p className="small" style={{ margin: 0 }}>&ldquo;{x.responseNote}&rdquo;</p>}
+
+            {view === "incoming" ? (
+              <IncomingResponse
+                id={x.id}
+                status={x.status}
+                date={dateOf(x.startsAt)}
+                start={minutesOfDay(x.startsAt)}
+                minutes={Math.max(15, Math.round((new Date(x.endsAt).getTime() - new Date(x.startsAt).getTime()) / 60000))}
+              />
+            ) : (
+              <SentActions
+                id={x.id}
+                status={x.status}
+                typedIn={x.listingId === null}
+                listingId={x.listingId}
+                agentFirst={agentFirst}
+                remind={{ method: remind!.draft.method, href: remind!.href, label: remind!.draft.actionLabel, body: remind!.draft.body, subject: remind!.draft.subject }}
+                resend={{ method: resend!.draft.method, href: resend!.href, label: resend!.draft.actionLabel, body: resend!.draft.body, subject: resend!.draft.subject }}
+                reminded={x.remindedAt ? `Reminded ${x.reminderCount > 1 ? `${x.reminderCount} times, last ` : ""}${ago(x.remindedAt)}` : null}
+              />
             )}
           </article>
         );

@@ -114,3 +114,58 @@ export function acceptedOtherNotice(agentFirstName: string, address: string): st
 export function highestAndBestNotice(address: string, deadline: string, s: Sender): string {
   return `Multiple offers received on ${address}. Please submit your buyer's highest and best offer by ${deadline}. Send offers to ${s.name}, ${s.phone}. Thank you!`;
 }
+
+export interface AgentContact {
+  preferred: ContactMethod;
+  phone?: string;
+  email?: string;
+  onApp?: boolean;
+  onlineUrl?: string;
+}
+
+export function reminderText(s: Sender, d: RequestDetails): string {
+  return `Hi ${d.listingAgentFirstName}, it's ${s.name} with ${s.brokerage} following up on my showing request for ${d.address} on ${d.dayLabel}, ${d.timeLabel}, for my ${buyers(d)}. Could you confirm when you get a chance? Thank you! ${s.phone}`;
+}
+
+export function reminderEmail(s: Sender, d: RequestDetails): { subject: string; body: string } {
+  return {
+    subject: `Following up: showing request for ${d.address} · ${d.dayLabel}, ${d.timeLabel}`,
+    body: [
+      `Hi ${d.listingAgentFirstName},`,
+      "",
+      `Just following up on my request to show ${d.address} on ${d.dayLabel}, ${d.timeLabel}, to my ${buyers(d)}.`,
+      "",
+      "Could you confirm, or suggest another time that works for your sellers?",
+      "",
+      "Thank you,",
+      s.name,
+      `${s.brokerage} · ${s.phone}`,
+    ].join("\n"),
+  };
+}
+
+/**
+ * The message for a reminder or a resend, in the listing agent's preferred way.
+ * In-app agents get a notification; everyone else gets a draft to send from your phone or email.
+ */
+export function nudgeDraft(kind: "remind" | "resend", s: Sender, d: RequestDetails, c: AgentContact): Draft {
+  const first = d.listingAgentFirstName;
+  if (c.onApp || c.preferred === "app") {
+    return { method: "app", to: "REschedule inbox", body: kind === "remind" ? `Sends ${first} a reminder in REschedule.` : `Sends the request to ${first} again in REschedule.`, actionLabel: kind === "remind" ? "Send reminder" : "Resend request" };
+  }
+  const wantsEmail = c.preferred === "email" || (!c.phone && !!c.email);
+  if (wantsEmail && c.email) {
+    const e = kind === "remind" ? reminderEmail(s, d) : emailRequest(s, d);
+    return { method: "email", to: c.email, subject: e.subject, body: e.body, actionLabel: kind === "remind" ? "Email reminder" : "Email request again" };
+  }
+  if (c.preferred === "online" && c.onlineUrl && kind === "resend") {
+    return { method: "online", to: c.onlineUrl, body: `Opens ${first}'s online scheduler.`, actionLabel: "Open their scheduler" };
+  }
+  if (c.preferred === "call" && c.phone) {
+    return { method: "call", to: c.phone, body: callScript(s, d), actionLabel: `Call ${first}` };
+  }
+  if (c.phone) {
+    return { method: "text", to: c.phone, body: kind === "remind" ? reminderText(s, d) : textRequest(s, d), actionLabel: kind === "remind" ? "Text reminder" : "Text request again" };
+  }
+  return { method: "app", to: "", body: `Add ${first}'s phone or email to send this.`, actionLabel: kind === "remind" ? "Send reminder" : "Resend request" };
+}
