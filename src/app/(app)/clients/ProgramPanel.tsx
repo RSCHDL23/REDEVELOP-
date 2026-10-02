@@ -4,6 +4,8 @@ import { NACA_LINKS, NACA_STEPS, qualificationExpires } from "@/lib/core/naca";
 import { NACA_COSTS, paymentShock, priceFromPayment } from "@/lib/core/mortgage";
 import { prettyDate, todayISO } from "@/lib/data/dates";
 import { saveProgram, toggleProgramStep } from "./actions";
+import { FinancingForm } from "@/components/FinancingForm";
+import { greetingName } from "@/lib/core/closing";
 
 const PROGRAMS: [Client["loanProgram"], string][] = [
   ["unknown", "Not set"], ["conventional", "Conventional"], ["fha", "FHA"], ["va", "VA"], ["usda", "USDA"], ["naca", "NACA"], ["cash", "Cash"], ["other", "Other"],
@@ -21,9 +23,13 @@ export function ProgramPanel({ c, rate }: { c: Client; rate: number }) {
   return (
     <details className="card" style={{ width: "100%", gap: 8, background: naca ? "#eef7f2" : undefined }} open={naca}>
       <summary className="small strong" style={{ cursor: "pointer" }}>
-        Loan: {PROGRAMS.find(([id]) => id === c.loanProgram)?.[1]}
+        Loan: {PROGRAMS.find(([id]) => id === c.loanProgram)?.[1]}{c.financing?.kind === "preapproval" ? " · pre-approval on file" : c.financing?.kind === "proof_of_funds" ? " · proof of funds on file" : ""}
         {naca && ` · NACA ${done.size}/${NACA_STEPS.length} steps`}
       </summary>
+      <div className="stack" style={{ gap: 6, marginTop: 8, paddingBottom: 10, borderBottom: "1px solid var(--line)" }}>
+        <span className="small strong">Pre-approval or proof of funds</span>
+        <FinancingForm target={c.id} current={c.financing} forClient={greetingName(c.name)} start={c.loanProgram === "cash" ? "proof_of_funds" : "preapproval"} />
+      </div>
       <form action={saveProgram} className="stack" style={{ gap: 8, marginTop: 8 }}>
         <input type="hidden" name="id" value={c.id} />
         <div className="grid-2">

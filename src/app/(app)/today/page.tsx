@@ -35,7 +35,6 @@ export default async function TodayPage() {
 
   return (
     <main className="page">
-      <img src="/wordmark-light.png" alt="REschedule" style={{ height: 24, width: "auto", alignSelf: "flex-start" }} />
       <header className="between" style={{ alignItems: "flex-start" }}>
         <div className="stack" style={{ gap: 4 }}>
           <span className="small strong muted">{prettyDate(today, { weekday: "long", month: "long", day: "numeric" })}</span>
@@ -63,6 +62,19 @@ export default async function TodayPage() {
           <span className="small strong">Active deals</span>
         </Link>
       </section>
+
+      {me.selfRoles.includes("buyer") && (!me.financing || me.financing.kind === "estimate") && (
+        <Link href="/get-ready" className="card accent" style={{ color: "var(--ink)" }}>
+          <span className="strong">Get ready to buy</span>
+          <span className="small muted">Upload your pre-approval (or proof of funds if you&apos;re paying cash), find a lender, or estimate what you can afford.</span>
+        </Link>
+      )}
+      {me.selfRoles.some((x) => x === "renter" || x === "tenant") && (
+        <Link href="/get-ready#naca" className="card" style={{ color: "var(--ink)", background: "#eef7f2", borderColor: "#b9dcc8" }}>
+          <span className="strong">Renting? Meet NACA</span>
+          <span className="small muted">A nonprofit mortgage with no down payment, no closing costs and no PMI. See if owning could cost about what you pay in rent.</span>
+        </Link>
+      )}
 
       <TripAlerts trips={tripsFor(requests, clients, me, today)} />
 

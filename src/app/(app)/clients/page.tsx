@@ -13,6 +13,10 @@ import { agreementFor, agreementHeadsUp, ESIGN_PROVIDERS } from "@/lib/core/agre
 import { buyerDosAndDonts, sellerDosAndDonts } from "@/lib/core/clientTips";
 import { greetingName } from "@/lib/core/closing";
 import { moveClient } from "./actions";
+import { SendPanel } from "@/components/SendPanel";
+import { simpleDrafts } from "@/lib/core/messages";
+import { nacaIntroMessage } from "@/lib/core/naca";
+import { askForFinancingMessage, financingSummary } from "@/lib/core/financing";
 
 export const metadata: Metadata = { title: "Clients" };
 
@@ -70,7 +74,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
               <div className="stack" style={{ gap: 2, flex: 1, minWidth: 0 }}>
                 <span className="strong">{c.name}</span>
                 <span className="small muted">
-                  {[c.intent, c.preApproved ? "Pre-approved" : null].filter(Boolean).join(" · ") || "Client"}
+                  {[c.intent, c.financing ? financingSummary(c.financing).split(" · ")[0] : c.preApproved ? "Pre-approved" : null].filter(Boolean).join(" · ") || "Client"}
                 </span>
                 {c.notes && <span className="small">{c.notes}</span>}
               </div>
@@ -110,6 +114,17 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
               )}
             </div>
 
+            {c.intent === "Renting" && c.stage !== "past" && (
+              <div className="card" style={{ width: "100%", gap: 6, background: "#eef7f2", borderColor: "#b9dcc8" }}>
+                <span className="small"><span className="strong">Renting?</span> {greetingName(c.name)} may be able to buy with NACA: no down payment, no closing costs, no PMI.</span>
+                <SendPanel label="Introduce NACA" title={`Introduce ${greetingName(c.name)} to NACA`} tone="green"
+                  drafts={simpleDrafts(c, nacaIntroMessage({ clientFirst: greetingName(c.name), agentName: me.fullName, agentPhone: me.phone }), "A way to buy with no down payment: NACA")} />
+              </div>
+            )}
+            {(c.intent === "Buying" || c.intent === "Investing") && c.stage !== "past" && !c.financing && !c.preApproved && c.loanProgram !== "cash" && (
+              <SendPanel label="Ask for pre-approval" title={`Ask ${greetingName(c.name)} for their pre-approval`}
+                drafts={simpleDrafts(c, askForFinancingMessage({ clientFirst: greetingName(c.name), agentName: me.fullName, agentPhone: me.phone }), "Your pre-approval letter")} />
+            )}
             {(c.intent === "Buying" || c.intent === "Investing") && c.stage !== "past" && <ProgramPanel c={c} rate={6.625} />}
 
             <form action={moveClient} className="row small" style={{ gap: 6, flexWrap: "wrap" }}>

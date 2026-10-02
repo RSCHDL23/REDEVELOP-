@@ -32,3 +32,23 @@ export function qualificationExpires(qualifiedOn: string): string {
   const dt = new Date(Date.UTC(y, m - 1 + 6, d));
   return dt.toISOString().slice(0, 10);
 }
+
+/** What NACA offers, from naca.com/faq/naca-mortgage-product (checked Oct 2026). */
+export const NACA_HIGHLIGHTS = [
+  "No down payment",
+  "No closing costs and no fees",
+  "No mortgage insurance (PMI)",
+  "Below-market fixed rate, 15, 20 or 30 years",
+  "Everyone gets the same terms",
+  "Free workshop and housing counseling to qualify",
+];
+
+/** A friendly NACA introduction for renters, from their agent. */
+export function nacaIntroMessage(p: { clientFirst: string; agentName: string; agentPhone: string }): string {
+  return [
+    `Hi ${p.clientFirst}! Since you're renting now, I wanted to tell you about NACA, a nonprofit mortgage program that helps renters become homeowners.`,
+    `It has no down payment, no closing costs, no fees and no mortgage insurance, with a below-market fixed rate. You qualify through a free workshop and housing counseling.`,
+    `Start here: https://www.naca.com/10steps/`,
+    `Happy to walk you through it or go to a workshop with you. ${p.agentName}${p.agentPhone ? ` · ${p.agentPhone}` : ""}`,
+  ].join("\n\n");
+}

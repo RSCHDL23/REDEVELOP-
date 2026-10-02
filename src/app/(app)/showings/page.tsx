@@ -173,9 +173,10 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
                 newTimeDrafts={x.status === "countered" ? newTimeDraftsFor(x, me) : []}
               />
             )}
-            {view === "incoming" && (x.otherAgent.phone || x.otherAgent.email) && (
+            {view === "incoming" && (x.otherAgent.phone || x.otherAgent.email || (x.otherAgent.onApp && x.otherAgent.id)) && (
               <div className="row small" style={{ flexWrap: "wrap", gap: 6 }}>
                 <span className="muted">Contact {agentFirst}:</span>
+                {x.otherAgent.onApp && x.otherAgent.id && <Link className="chip row" style={{ color: "var(--ink)" }} href={`/messages/${x.otherAgent.id}`}>Message</Link>}
                 {x.otherAgent.phone && <a className="chip row" style={{ color: "var(--ink)" }} href={`sms:${x.otherAgent.phone.replace(/[^\d+]/g, "")}`}>Text</a>}
                 {x.otherAgent.phone && <a className="chip row" style={{ color: "var(--ink)" }} href={`tel:${x.otherAgent.phone.replace(/[^\d+]/g, "")}`}>Call</a>}
                 {x.otherAgent.email && <a className="chip row" style={{ color: "var(--ink)" }} href={`mailto:${x.otherAgent.email}`}>Email</a>}
@@ -193,6 +194,7 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
                 drafts={allDraftsFor(x, me, licenses, origin).filter((d) => d.method !== "app")}
                 preferred={x.otherAgent.contact.methods}
                 onApp={x.otherAgent.onApp}
+                messageHref={x.otherAgent.onApp && x.otherAgent.id ? `/messages/${x.otherAgent.id}` : null}
                 resend={{ method: resend!.draft.method, href: resend!.href, label: resend!.draft.actionLabel, body: resend!.draft.body, subject: resend!.draft.subject }}
                 reminded={x.remindedAt ? `Sent again ${x.reminderCount > 1 ? `${x.reminderCount} times, last ` : ""}${ago(x.remindedAt)}` : null}
               />

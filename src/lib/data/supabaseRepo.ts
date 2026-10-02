@@ -5,7 +5,7 @@ import { hm, subtract, type Window } from "@/lib/core/time";
 import { contractMilestones } from "@/lib/core/deadlines";
 import type { Role } from "@/lib/core/access";
 import type { PublicProfile, Repo } from "./repo";
-import type { AgentSummary, Attachment, Client, ClientStage, HomeShare, Membership, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, TourContext, WeeklyHours } from "./types";
+import type { AgentSummary, Attachment, Client, Financing, Message, MessageContact, Thread, ClientStage, HomeShare, Membership, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, TourContext, WeeklyHours } from "./types";
 import { dateOf, minutesOfDay, toTimestamp, weekdayOf } from "./dates";
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -82,6 +82,7 @@ function toRequest(r: Row, uid: string, files: Map<string, Attachment> = new Map
       lat: r.listing?.lat ?? null, lng: r.listing?.lng ?? null,
       price: r.listing?.price_cents != null ? Number(r.listing.price_cents) / 100 : null,
     },
+    createdAt: r.created_at, decidedAt: r.decided_at ?? null,
   };
 }
 
@@ -99,6 +100,19 @@ function toClient(r: Row): Client {
     approvedMonthly: r.approved_monthly_cents != null ? r.approved_monthly_cents / 100 : null,
     currentHousing: r.current_housing_cents != null ? r.current_housing_cents / 100 : null,
     programSteps: r.program_steps ?? [], qualifiedOn: r.qualified_on ?? null,
+    financing: toFinancing(r.financing),
+  };
+}
+
+/** Financing is stored as a small JSON object; anything unexpected is dropped. */
+function toFinancing(f: Row | null | undefined): Financing | null {
+  if (!f || typeof f !== "object" || !["preapproval", "proof_of_funds", "estimate"].includes(f.kind)) return null;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const str = (v: unknown, max = 120) => (typeof v === "string" ? v.slice(0, max) : "");
+  return {
+    kind: f.kind, lender: str(f.lender), loanType: str(f.loanType, 40), purchasePrice: num(f.purchasePrice), loanAmount: num(f.loanAmount),
+    downPct: num(f.downPct), ratePct: num(f.ratePct), termYears: num(f.termYears), expiresOn: /^\d{4}-\d{2}-\d{2}$/.test(f.expiresOn ?? "") ? f.expiresOn : null,
+    amount: num(f.amount), fileName: str(f.fileName), fileId: typeof f.fileId === "string" ? f.fileId : null, savedAt: str(f.savedAt, 40),
   };
 }
 
@@ -118,6 +132,7 @@ export const supabaseRepo: Repo = {
       myResources: Array.isArray(p.my_resources) ? p.my_resources : [],
       myAgent: p.my_agent ? { name: p.my_agent.full_name, slug: p.my_agent.slug } : null,
       esignProvider: p.esign_provider ?? null, esignUrl: p.esign_url ?? "",
+      financing: toFinancing(p.financing), notificationsSeenAt: p.notifications_seen_at ?? null,
     } satisfies Profile;
   },
   async updateMe(patch) {
@@ -140,6 +155,8 @@ export const supabaseRepo: Repo = {
     if (patch.myResources !== undefined) row.my_resources = patch.myResources.slice(0, 40);
     if (patch.esignProvider !== undefined) row.esign_provider = patch.esignProvider;
     if (patch.esignUrl !== undefined) row.esign_url = patch.esignUrl || null;
+    if (patch.financing !== undefined) row.financing = patch.financing;
+    if (patch.notificationsSeenAt !== undefined) row.notifications_seen_at = patch.notificationsSeenAt;
     // For uploads, headshotUrl and logoUrl carry the storage path of the new file.
     if (patch.headshotUrl !== undefined) row.headshot_path = patch.headshotUrl;
     if (patch.logoUrl !== undefined) row.logo_path = patch.logoUrl;
@@ -313,6 +330,8 @@ export const supabaseRepo: Repo = {
     if (patch.currentHousing !== undefined) row.current_housing_cents = patch.currentHousing == null ? null : Math.round(patch.currentHousing * 100);
     if (patch.programSteps !== undefined) row.program_steps = patch.programSteps;
     if (patch.qualifiedOn !== undefined) row.qualified_on = patch.qualifiedOn;
+    if (patch.financing !== undefined) row.financing = patch.financing;
+    if (patch.preApproved !== undefined) row.pre_approved = patch.preApproved;
     check(await supabase.from("clients").update(row).eq("id", id));
   },
   async markReviewRequested(clientId) {
@@ -409,6 +428,67 @@ export const supabaseRepo: Repo = {
   async addTask(dealId, t) {
     const { supabase } = await session();
     check(await supabase.from("deal_tasks").insert({ deal_id: dealId, title: t.title, assignee_label: t.assignee || null, due_date: t.due, source: "manual" }));
+  },
+  async updateDealMember(dealId, memberId, m) {
+    const { supabase, uid } = await session();
+    check(await supabase.from("deal_members").update({ role: m.role, display_name: m.name, phone: m.phone || null, email: m.email || null })
+      .eq("id", memberId).eq("deal_id", dealId).or(`profile_id.is.null,profile_id.neq.${uid}`));
+  },
+  async updateTask(dealId, taskId, t) {
+    const { supabase } = await session();
+    check(await supabase.from("deal_tasks").update({ title: t.title, assignee_label: t.assignee || null, due_date: t.due }).eq("id", taskId).eq("deal_id", dealId));
+  },
+  async completeMilestones(dealId, ids) {
+    const { supabase } = await session();
+    const real = ids.filter((id) => !id.startsWith("calc-"));
+    if (real.length) check(await supabase.from("milestones").update({ done_at: new Date().toISOString() }).eq("deal_id", dealId).in("id", real).neq("kind", "closing").is("done_at", null));
+  },
+  async listThreads() {
+    const { supabase, uid } = await session();
+    const rows = check(await supabase.from("messages").select("*").or(`sender_id.eq.${uid},recipient_id.eq.${uid}`).order("created_at", { ascending: false }).limit(500)) as Row[];
+    const contacts = await contactMap(supabase);
+    const byOther = new Map<string, Row[]>();
+    for (const m of rows) {
+      const other = m.sender_id === uid ? m.recipient_id : m.sender_id;
+      byOther.set(other, [...(byOther.get(other) ?? []), m]);
+    }
+    const missing = [...byOther.keys()].filter((id) => !contacts.has(id));
+    if (missing.length) {
+      const ps = check(await supabase.from("profiles").select("id, full_name").in("id", missing)) as Row[];
+      for (const p of ps) contacts.set(p.id, { id: p.id, name: p.full_name, context: "" });
+    }
+    return [...byOther.entries()].map(([id, ms]) => ({
+      withId: id, withName: contacts.get(id)?.name ?? "Someone", context: contacts.get(id)?.context ?? "",
+      last: `${ms[0].sender_id === uid ? "You: " : ""}${ms[0].body}`, lastAt: ms[0].created_at,
+      unread: ms.filter((m) => m.recipient_id === uid && !m.read_at).length,
+    }) satisfies Thread);
+  },
+  async getThread(withId) {
+    const { supabase, uid } = await session();
+    if (!/^[0-9a-f-]{36}$/i.test(withId)) return null;
+    const contacts = await contactMap(supabase);
+    let who = contacts.get(withId);
+    const rows = check(await supabase.from("messages").select("*")
+      .or(`and(sender_id.eq.${uid},recipient_id.eq.${withId}),and(sender_id.eq.${withId},recipient_id.eq.${uid})`)
+      .order("created_at").limit(300)) as Row[];
+    if (!who) {
+      if (!rows.length) return null;
+      const p = check(await supabase.from("profiles").select("id, full_name").eq("id", withId).maybeSingle()) as Row | null;
+      who = { id: withId, name: p?.full_name ?? "Someone", context: "" };
+    }
+    if (rows.some((m) => m.recipient_id === uid && !m.read_at)) {
+      await supabase.from("messages").update({ read_at: new Date().toISOString() }).eq("recipient_id", uid).eq("sender_id", withId).is("read_at", null);
+    }
+    return { with: who, messages: rows.map((m) => ({ id: m.id, fromMe: m.sender_id === uid, body: m.body, at: m.created_at }) satisfies Message) };
+  },
+  async sendMessage(toId, body) {
+    const { supabase, uid } = await session();
+    // The database only allows messages to people you work with.
+    check(await supabase.from("messages").insert({ sender_id: uid, recipient_id: toId, body: body.slice(0, 2000) }));
+  },
+  async listMessageContacts() {
+    const { supabase } = await session();
+    return [...(await contactMap(supabase)).values()].sort((a, b) => a.name.localeCompare(b.name));
   },
   async saveAttachment(file) {
     const { supabase, uid } = await session();
@@ -530,6 +610,11 @@ export const supabaseRepo: Repo = {
     if (rows.length) check(await supabase.from("availability_rules").insert(rows));
   },
 };
+
+async function contactMap(supabase: Awaited<ReturnType<typeof createClient>>): Promise<Map<string, MessageContact>> {
+  const { data } = await supabase.rpc("message_contacts");
+  return new Map(((data as Row[] | null) ?? []).map((c) => [c.id, { id: c.id, name: c.name, context: c.context ?? "" }]));
+}
 
 function toDeal(r: Row, uid: string): Deal {
   const members = (r.deal_members ?? []) as Row[];

@@ -7,7 +7,7 @@ import { daysUntil } from "@/lib/core/deadlines";
 import { can, needsDualRoleDisclosure, rolesFor } from "@/lib/core/access";
 import { BackLink, Initials } from "@/components/ui";
 import { postLoanUpdate, removePerson, setMilestoneDate, toggleMilestone, toggleTask } from "../actions";
-import { AddPersonForm, AddTodoForm } from "./DealForms";
+import { AddPersonForm, AddTodoForm, ContactMenu, EditPersonForm, EditTodoForm, VerifyClosing } from "./DealForms";
 import { checklistMessage, greetingName, reviewRequestMessage, type ClosingSide } from "@/lib/core/closing";
 import { appOrigin } from "@/lib/server/origin";
 import { Celebration } from "./Celebration";
@@ -35,8 +35,8 @@ const EARNEST_LABEL: Record<string, string> = {
 
 const LOAN_STATUSES = ["Application received", "Appraisal ordered", "Appraisal in", "Conditional approval", "Clear to close", "Docs sent to title", "Funded"];
 
-export default async function DealPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; celebrate?: string; created?: string }> }) {
-  const [{ id }, { tab = "dates", celebrate, created }] = await Promise.all([params, searchParams]);
+export default async function DealPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; celebrate?: string; created?: string; verify?: string; missing?: string }> }) {
+  const [{ id }, { tab = "dates", celebrate, created, verify, missing }] = await Promise.all([params, searchParams]);
   const r = repo();
   const [deal, licenses, me] = await Promise.all([r.getDeal(id), r.listLicenses(), r.getMe()]);
   if (!deal) notFound();
@@ -70,8 +70,15 @@ export default async function DealPage({ params, searchParams }: { params: Promi
       })
     : null;
 
+  const unverified = deal.milestones.filter((m) => m.kind !== "closing" && !m.done).sort((a, b) => a.due.localeCompare(b.due));
+  const closingOpen = deal.milestones.some((m) => m.kind === "closing" && !m.done);
+  const assignees = ["You", ...new Set(deal.members.filter((m) => !m.isYou).map((m) => ROLE_NAME[m.role] ?? m.role))];
+
   return (
     <main className="page">
+      {verify === "1" && closingOpen && unverified.length > 0 && !celebration && (
+        <VerifyClosing dealId={deal.id} missing={missing === "1"} open={unverified.map((m) => ({ id: m.id, label: m.label, due: prettyDate(m.due, { month: "short", day: "numeric" }) }))} />
+      )}
       {celebration && <Celebration address={deal.address} dealId={deal.id} messages={celebration} post={post} review={review} />}
       {showUnderContract && !celebration && <UnderContract dealId={deal.id} post={post} />}
       <BackLink href="/deals" label="Deals" />
@@ -153,7 +160,7 @@ export default async function DealPage({ params, searchParams }: { params: Promi
       {current === "tasks" && (
         <>
         <p className="small muted" style={{ margin: 0 }}>To-dos marked <span className="pill">Template</span> were made automatically when the deal was created, from its side, loan type, HOA and dates. Add your own anytime.</p>
-        <AddTodoForm dealId={deal.id} assignees={["You", ...new Set(deal.members.filter((m) => !m.isYou).map((m) => ROLE_NAME[m.role] ?? m.role))]} />
+        <AddTodoForm dealId={deal.id} assignees={assignees} />
         <ul className="list">
           {deal.tasks.length === 0 && <li className="small muted">No to-dos yet.</li>}
           {deal.tasks.map((t) => (
@@ -170,6 +177,9 @@ export default async function DealPage({ params, searchParams }: { params: Promi
                 </span>
                 {t.source === "auto" && <span className="pill">Template</span>}
               </form>
+              <div className="row" style={{ marginTop: 6, marginLeft: 54 }}>
+                <EditTodoForm dealId={deal.id} task={{ id: t.id, title: t.title, assignee: t.assignee, due: t.due }} assignees={assignees} />
+              </div>
             </li>
           ))}
         </ul>
@@ -187,8 +197,8 @@ export default async function DealPage({ params, searchParams }: { params: Promi
                 <span className="strong">{m.name}{m.isYou ? " (you)" : ""}</span>
                 <span className="small muted">{ROLE_NAME[m.role] ?? m.role}</span>
               </span>
-              {m.phone && !m.isYou && <a className="btn" href={`sms:${m.phone.replace(/[^\d+]/g, "")}`} aria-label={`Text ${m.name}`}>Text</a>}
-              {m.email && !m.isYou && <a className="btn" href={`mailto:${m.email}`} aria-label={`Email ${m.name}`}>Email</a>}
+              {!m.isYou && <ContactMenu name={m.name} phone={m.phone} email={m.email} />}
+              {!m.isYou && <EditPersonForm dealId={deal.id} member={{ id: m.id, role: m.role, name: m.name, phone: m.phone, email: m.email }} />}
               {!m.isYou && (
                 <form action={removePerson}>
                   <input type="hidden" name="dealId" value={deal.id} />

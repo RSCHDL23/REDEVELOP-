@@ -1,6 +1,6 @@
 import type { Profession } from "@/lib/core/access";
 import type { ContactMethod } from "@/lib/core/messages";
-import type { Attachment, Client, ClientReview, ClientStage, ContactPreference, Deal, DealMember, EarnestHolder, HomeShare, Membership, MyResource, License, Listing, PortfolioItem, Profile, RequestStatus, ShowingFeedback, ShowingRequest, TourContext, WeeklyHours } from "./types";
+import type { Attachment, Client, Message, MessageContact, Thread, ClientReview, ClientStage, ContactPreference, Deal, DealMember, EarnestHolder, HomeShare, Membership, MyResource, License, Listing, PortfolioItem, Profile, RequestStatus, ShowingFeedback, ShowingRequest, TourContext, WeeklyHours } from "./types";
 
 export interface NewRequest {
   /** A home in the system, or a typed-in home with its listing agent. */
@@ -53,7 +53,7 @@ export interface PublicProfile {
 /** Everything the screens need. Implemented by the demo store and by Supabase. */
 export interface Repo {
   getMe(): Promise<Profile>;
-  updateMe(patch: Partial<Pick<Profile, "fullName" | "phone" | "tagline" | "bio" | "brokerage" | "headshotUrl" | "logoUrl" | "selfRoles" | "websites" | "mapApp" | "mlsAgentId" | "idInMessages" | "home" | "office" | "reviewLinks" | "rememberAuto" | "rememberChannel" | "myResources" | "esignProvider" | "esignUrl">>): Promise<void>;
+  updateMe(patch: Partial<Pick<Profile, "fullName" | "phone" | "tagline" | "bio" | "brokerage" | "headshotUrl" | "logoUrl" | "selfRoles" | "websites" | "mapApp" | "mlsAgentId" | "idInMessages" | "home" | "office" | "reviewLinks" | "rememberAuto" | "rememberChannel" | "myResources" | "esignProvider" | "esignUrl" | "financing" | "notificationsSeenAt">>): Promise<void>;
 
   getContactPreference(): Promise<ContactPreference>;
   saveContactPreference(pref: ContactPreference): Promise<void>;
@@ -91,7 +91,7 @@ export interface Repo {
   listClients(): Promise<Client[]>;
   addClient(input: Pick<Client, "name" | "phone" | "email" | "preApproved"> & Partial<Pick<Client, "stage" | "notes" | "intent" | "loanProgram">>): Promise<Client>;
   setClientStage(id: string, stage: ClientStage): Promise<void>;
-  updateClient(id: string, patch: Partial<Pick<Client, "closedOn" | "remember" | "notes" | "phone" | "email" | "agreementSentAt" | "loanProgram" | "approvedMonthly" | "currentHousing" | "programSteps" | "qualifiedOn">>): Promise<void>;
+  updateClient(id: string, patch: Partial<Pick<Client, "closedOn" | "remember" | "notes" | "phone" | "email" | "agreementSentAt" | "loanProgram" | "approvedMonthly" | "currentHousing" | "programSteps" | "qualifiedOn" | "financing" | "preApproved">>): Promise<void>;
   markReviewRequested(clientId: string): Promise<void>;
   listMyReviews(): Promise<ClientReview[]>;
   /** Review page from a client's private link (no account needed). */
@@ -111,6 +111,16 @@ export interface Repo {
   addDealMember(dealId: string, m: Pick<DealMember, "role" | "name" | "phone" | "email">): Promise<void>;
   removeDealMember(dealId: string, memberId: string): Promise<void>;
   addTask(dealId: string, t: { title: string; assignee: string; due: string | null }): Promise<void>;
+  updateDealMember(dealId: string, memberId: string, m: Pick<DealMember, "role" | "name" | "phone" | "email">): Promise<void>;
+  updateTask(dealId: string, taskId: string, t: { title: string; assignee: string; due: string | null }): Promise<void>;
+  /** Checks off several dates at once (the "verify before closing" step). */
+  completeMilestones(dealId: string, milestoneIds: string[]): Promise<void>;
+
+  /** Messages with other people on REschedule. */
+  listThreads(): Promise<Thread[]>;
+  getThread(withId: string): Promise<{ with: MessageContact; messages: Message[] } | null>;
+  sendMessage(toId: string, body: string): Promise<void>;
+  listMessageContacts(): Promise<MessageContact[]>;
 
   /** Documents attached to showing requests, shared by private link. */
   saveAttachment(file: { name: string; mime: string; bytes: Uint8Array }): Promise<{ id: string; token: string }>;

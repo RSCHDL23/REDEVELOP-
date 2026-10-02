@@ -138,7 +138,7 @@ export function Calculator({ initial }: { initial: CalcInitial }) {
           {nacaFix && nacaFix.needed && (
             <>
               <span className="small"><span className="strong">To fit {usd(goal)}/mo:</span> buy the rate down to <span className="strong">{nacaFix.rate.toFixed(3)}%</span> ({usd(nacaFix.payment)}/mo).</span>
-              <span className="small">Buy-down needed: <span className="strong tabular">{usd(nacaFix.cost)}</span>. The seller can cover up to {usd(nacaFix.sellerMax)}{nacaFix.cost <= nacaFix.sellerMax ? " (all of it)" : ""}; the rest comes from the buyer or another documented source.</span>
+              <span className="small">Buy-down needed: <span className="strong tabular">{usd(nacaFix.cost)}</span>. The seller can cover up to {usd(nacaFix.sellerMax)}{nacaFix.cost <= nacaFix.sellerMax ? " (all of it)" : <>; the other <span className="strong">{usd(nacaFix.cost - nacaFix.sellerMax)}</span> comes from the buyer or another documented source (savings, family, grants)</>}.</span>
               <button type="button" className="btn block" style={{ background: "#fff" }} onClick={() => setSteps(Math.round((startRate - nacaFix.rate) / NACA_BUYDOWN.step))}>Use {nacaFix.rate.toFixed(3)}%</button>
             </>
           )}

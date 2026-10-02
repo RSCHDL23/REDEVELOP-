@@ -35,6 +35,55 @@ export interface Profile {
   /** The agent's e-signature software, for sending agreements. */
   esignProvider: EsignProvider | null;
   esignUrl: string;
+  /** For buyers: their pre-approval, proof of funds, or a budget estimate. */
+  financing: Financing | null;
+  /** Last time the notification list was opened. */
+  notificationsSeenAt: string | null;
+}
+
+/** How a buyer is paying: a lender's pre-approval, cash (proof of funds), or their own estimate. */
+export interface Financing {
+  kind: "preapproval" | "proof_of_funds" | "estimate";
+  lender: string;
+  loanType: string;
+  /** Pre-approved purchase price, or the price their estimate gave. */
+  purchasePrice: number | null;
+  loanAmount: number | null;
+  downPct: number | null;
+  ratePct: number | null;
+  termYears: number | null;
+  expiresOn: string | null;
+  /** Proof of funds: cash available. Estimate: the monthly payment they want. */
+  amount: number | null;
+  /** The uploaded letter or statement (kept private). */
+  fileName: string;
+  fileId: string | null;
+  savedAt: string;
+}
+
+/** One conversation in Messages, with another person on REschedule. */
+export interface Thread {
+  withId: string;
+  withName: string;
+  /** "Your client", "Agent · Marcus Bell's showing"… */
+  context: string;
+  last: string;
+  lastAt: string;
+  unread: number;
+}
+
+export interface Message {
+  id: string;
+  fromMe: boolean;
+  body: string;
+  at: string;
+}
+
+/** Someone you can message: clients on the app, agents you've shown with, people on your deals. */
+export interface MessageContact {
+  id: string;
+  name: string;
+  context: string;
 }
 
 export type EsignProvider = "docusign" | "dotloop" | "authentisign" | "skyslope" | "adobe" | "zipforms" | "other";
@@ -174,6 +223,7 @@ export interface Client {
   currentHousing: number | null;
   programSteps: string[];
   qualifiedOn: string | null;
+  financing: Financing | null;
 }
 
 export interface ClientReview {
@@ -235,6 +285,9 @@ export interface ShowingRequest {
   attachments: Attachment[];
   clientId: string | null;
   home: HomeSnapshot;
+  createdAt: string;
+  /** When the listing side answered. */
+  decidedAt: string | null;
 }
 
 export interface Person {

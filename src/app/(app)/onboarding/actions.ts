@@ -25,5 +25,7 @@ export async function finishOnboarding(_prev: OnboardingState, formData: FormDat
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
   if (!parsed.data.licensed && parsed.data.roles.length === 0) return { error: "Pick at least one." };
   await repo().updateMe({ fullName: parsed.data.fullName, phone: parsed.data.phone, selfRoles: parsed.data.roles });
-  redirect(parsed.data.licensed ? "/profile#licenses" : "/today");
+  // Buyers and renters go straight to "Get ready": pre-approval, proof of funds, lenders, an estimate, or NACA.
+  const shopper = parsed.data.roles.some((r) => r === "buyer" || r === "renter" || r === "tenant");
+  redirect(parsed.data.licensed ? "/profile#licenses" : shopper ? "/get-ready" : "/today");
 }

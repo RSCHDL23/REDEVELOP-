@@ -66,7 +66,16 @@ export function TourBuilder({ ctx, sender, places, origin }: { ctx: TourContext;
   }
   const [state, action, sending] = useActionState<SendTourState, FormData>(sendTour, {});
 
-  const party = useMemo(() => intersectAll(ctx.participants.map((p) => p.free)), [ctx]);
+  // Everyone's free times for this tour. Starts from calendars; the agent can change any of them by hand.
+  const fromCalendar = useMemo(() => ctx.participants.map((p) => ({ name: p.name, source: p.source, free: p.free.map(([a, b]) => [a, b] as Window) })), [ctx]);
+  const [people, setPeople] = useState(fromCalendar);
+  const [editingPerson, setEditingPerson] = useState<number | null>(null);
+  const [newName, setNewName] = useState("");
+  const party = useMemo(() => intersectAll(people.map((p) => p.free)), [people]);
+  function setFree(i: number, free: Window[]) {
+    setPlan(null);
+    setPeople((list) => list.map((p, j) => (j === i ? { ...p, free, source: "Edited by you" } : p)));
+  }
   const byId = useMemo(() => new Map(ctx.homes.map((h) => [h.listing.id, h])), [ctx]);
 
   function toggle(id: string) {
@@ -115,15 +124,32 @@ export function TourBuilder({ ctx, sender, places, origin }: { ctx: TourContext;
             onChange={(e) => e.target.value && router.push(`/tour?date=${e.target.value}`)}
           />
         </div>
-        <ul className="stack" style={{ listStyle: "none", margin: 0, padding: 0, gap: 6 }}>
-          {ctx.participants.map((p) => (
-            <li key={p.name} className="between small">
-              <span><span className="strong">{p.name}</span> <span className="muted">· {p.source}</span></span>
-              <span className="tabular muted" style={{ textAlign: "right" }}>{windowsLabel(p.free)}</span>
+        <ul className="stack" style={{ listStyle: "none", margin: 0, padding: 0, gap: 6 }} aria-label="Who's going and when they're free">
+          {people.map((p, i) => (
+            <li key={`${p.name}-${i}`} className="stack" style={{ gap: 6 }}>
+              <div className="between small" style={{ gap: 8 }}>
+                <span><span className="strong">{p.name}</span> <span className="muted">· {p.source}</span></span>
+                <span className="row" style={{ gap: 6 }}>
+                  <span className="tabular muted" style={{ textAlign: "right" }}>{windowsLabel(p.free)}</span>
+                  <button type="button" className="chip" aria-expanded={editingPerson === i} aria-label={editingPerson === i ? `Done editing ${p.name}'s free times` : `Edit ${p.name}'s free times`} onClick={() => setEditingPerson(editingPerson === i ? null : i)}>{editingPerson === i ? "Done" : "Edit"}</button>
+                </span>
+              </div>
+              {editingPerson === i && (
+                <FreeEditor
+                  name={p.name} free={p.free} onChange={(w) => setFree(i, w)}
+                  onReset={i < fromCalendar.length ? () => { setPlan(null); setPeople((list) => list.map((x, j) => (j === i ? fromCalendar[i] : x))); } : undefined}
+                  onRemove={i > 0 ? () => { setPlan(null); setEditingPerson(null); setPeople((list) => list.filter((_, j) => j !== i)); } : undefined}
+                />
+              )}
             </li>
           ))}
         </ul>
+        <div className="row" style={{ gap: 6 }}>
+          <input className="input" aria-label="Add someone to the tour" placeholder="Add someone (e.g. a co-buyer)" value={newName} maxLength={60} onChange={(e) => setNewName(e.target.value)} style={{ flex: 1, minHeight: 40 }} />
+          <button type="button" className="btn" style={{ minHeight: 40 }} disabled={!newName.trim()} onClick={() => { setPeople((l) => [...l, { name: newName.trim(), source: "Entered by hand", free: [[10 * 60, 17 * 60]] }]); setEditingPerson(people.length); setNewName(""); setPlan(null); }}>Add</button>
+        </div>
         <p className="small strong" style={{ margin: 0 }}>Everyone free: <span className="tabular">{windowsLabel(party)}</span></p>
+        <span className="tiny muted">Changes here are for this tour only. Set your usual hours in <a href="/availability">Availability</a>.</span>
       </section>
 
       <section className="stack">
@@ -207,7 +233,7 @@ export function TourBuilder({ ctx, sender, places, origin }: { ctx: TourContext;
             <div className="card status-card status-countered">
               <span className="strong">Didn&apos;t fit in this tour</span>
               {plan.skipped.map((id) => (
-                <NextBest key={id} listingId={id} address={byId.get(id)?.listing.address ?? ""} date={ctx.date} minutes={length} taken={plan.stops.map((x) => [finalSlot(x).start, finalSlot(x).end] as [number, number])} />
+                <NextBest key={id} party={party} listingId={id} address={byId.get(id)?.listing.address ?? ""} date={ctx.date} minutes={length} taken={plan.stops.map((x) => [finalSlot(x).start, finalSlot(x).end] as [number, number])} />
               ))}
             </div>
           )}
@@ -279,10 +305,37 @@ function ClockPicker({ value, onChange, label }: { value: number; onChange: (m: 
   );
 }
 
-function NextBest({ listingId, address, date, minutes, taken }: { listingId: string; address: string; date: string; minutes: number; taken: [number, number][] }) {
+/** Edit someone's free times for the tour day, in 5-minute steps. */
+function FreeEditor({ name, free, onChange, onReset, onRemove }: { name: string; free: Window[]; onChange: (w: Window[]) => void; onReset?: () => void; onRemove?: () => void }) {
+  const sorted = [...free].sort((a, b) => a[0] - b[0]);
+  const update = (i: number, w: Window) => onChange(sorted.map((x, j) => (j === i ? w : x)));
+  const last = sorted[sorted.length - 1];
+  return (
+    <div className="stack" style={{ gap: 8, background: "var(--ground)", padding: 10, borderRadius: 12 }}>
+      {sorted.length === 0 && <span className="small muted">{name} isn&apos;t free this day.</span>}
+      {sorted.map(([a, b], i) => (
+        <div key={i} className="stack" style={{ gap: 4 }}>
+          <div className="stack" style={{ gap: 6 }}>
+            <div className="field"><span className="tiny strong">From</span><ClockPicker label={`${name} free from`} value={a} onChange={(m) => update(i, [m, Math.max(b, m + 15)])} /></div>
+            <div className="field"><span className="tiny strong">To</span><ClockPicker label={`${name} free until`} value={b} onChange={(m) => update(i, [Math.min(a, m - 15), m])} /></div>
+          </div>
+          <button type="button" className="chip" style={{ alignSelf: "flex-start" }} onClick={() => onChange(sorted.filter((_, j) => j !== i))}>Remove this time</button>
+        </div>
+      ))}
+      <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+        <button type="button" className="btn" style={{ minHeight: 36 }} onClick={() => { const s0 = last ? Math.min(last[1] + 60, 22 * 60) : 10 * 60; onChange([...sorted, [s0, Math.min(s0 + 120, 23 * 60 + 55)]]); }}>+ Add a time</button>
+        {sorted.length > 0 && <button type="button" className="btn" style={{ minHeight: 36 }} onClick={() => onChange([])}>Not free this day</button>}
+        {onReset && <button type="button" className="btn" style={{ minHeight: 36 }} onClick={onReset}>Use their calendar</button>}
+        {onRemove && <button type="button" className="btn" style={{ minHeight: 36 }} onClick={onRemove}>Remove {name.split(" ")[0]}</button>}
+      </div>
+    </div>
+  );
+}
+
+function NextBest({ listingId, address, date, minutes, taken, party }: { listingId: string; address: string; date: string; minutes: number; taken: [number, number][]; party: Window[] }) {
   const [list, setList] = useState<Suggestion[] | null>(null);
   const [busy, setBusy] = useState(false);
-  async function find() { setBusy(true); setList(await suggestTimes(listingId, date, minutes, taken)); setBusy(false); }
+  async function find() { setBusy(true); setList(await suggestTimes(listingId, date, minutes, taken, party.map(([a, b]) => [a, b] as [number, number]))); setBusy(false); }
   const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
   return (
     <div className="stack" style={{ gap: 6 }}>

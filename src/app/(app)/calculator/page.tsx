@@ -21,7 +21,7 @@ export default async function CalculatorPage({ searchParams }: { searchParams: P
       <Calculator initial={{
         mode: sp.mode === "price" ? "price" : "budget", monthly: clean(sp.monthly), price: clean(sp.price), current: clean(sp.current), naca: sp.naca === "1",
         rate: dec(sp.rate), down: dec(sp.down), years: [15, 20, 30].includes(years) ? years : undefined, target: clean(sp.target),
-        source: sp.from === "preapproval" ? "the pre-approval" : undefined,
+        source: sp.from === "preapproval" ? "the pre-approval" : sp.from === "estimate" ? "the monthly payment you want" : undefined,
       }} />
     </main>
   );

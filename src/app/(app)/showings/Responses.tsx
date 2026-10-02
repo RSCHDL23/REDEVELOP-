@@ -140,8 +140,8 @@ type Contact = { name: string; phone: string; email: string };
 const digits = (p: string) => p.replace(/[^\d+]/g, "");
 
 /** Requesting side: edit, resend, accept a new time, cancel, and contact the listing agent. */
-export function SentActions({ id, status, typedIn, listingId, agent, resend, drafts, preferred, onApp, reminded, slot, comments }: {
-  id: string; status: Status; typedIn: boolean; listingId: string | null; agent: Contact; resend: Nudge; drafts: Draft[]; preferred: string[]; onApp: boolean;
+export function SentActions({ id, status, typedIn, listingId, agent, resend, drafts, preferred, onApp, messageHref, reminded, slot, comments }: {
+  id: string; status: Status; typedIn: boolean; listingId: string | null; agent: Contact; resend: Nudge; drafts: Draft[]; preferred: string[]; onApp: boolean; messageHref?: string | null;
   reminded: string | null; slot: Slot; comments: string;
 }) {
   const router = useRouter();
@@ -176,10 +176,11 @@ export function SentActions({ id, status, typedIn, listingId, agent, resend, dra
   const contact = (
     <div className="row small" style={{ flexWrap: "wrap", gap: 6 }}>
       <span className="muted">Contact {first}:</span>
+      {messageHref && <a className="chip row" style={{ color: "var(--ink)" }} href={messageHref}>Message</a>}
       {agent.phone && <a className="chip row" style={{ color: "var(--ink)" }} href={`sms:${digits(agent.phone)}`}>Text</a>}
       {agent.phone && <a className="chip row" style={{ color: "var(--ink)" }} href={`tel:${digits(agent.phone)}`}>Call</a>}
       {agent.email && <a className="chip row" style={{ color: "var(--ink)" }} href={`mailto:${agent.email}`}>Email</a>}
-      {!agent.phone && !agent.email && <span className="muted">no phone or email on file</span>}
+      {!agent.phone && !agent.email && !messageHref && <span className="muted">no phone or email on file</span>}
     </div>
   );
 

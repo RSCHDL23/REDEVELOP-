@@ -334,3 +334,31 @@ This pre-approval expires on November 30, 2026.`);
     expect(readLetter("FHA approval up to $289,000. Valid through 12/15/26").expiresOn).toBe("2026-12-15");
   });
 });
+
+import { calculatorLink, financingSummary } from "./financing";
+import { lendersFor, SAMPLE_LENDERS } from "./lenders";
+import { simpleDrafts } from "./messages";
+import { nacaIntroMessage } from "./naca";
+
+describe("buyer financing", () => {
+  const pre = { kind: "preapproval" as const, lender: "Lakeshore Home Loans", loanType: "FHA", purchasePrice: 325000, loanAmount: 313625, downPct: 3.5, ratePct: 6.25, termYears: 30, expiresOn: "2026-12-15", amount: null, fileName: "", fileId: null, savedAt: "" };
+  it("fills the calculator from the pre-approval", () => {
+    expect(calculatorLink(pre)).toBe("/calculator?mode=price&price=325000&rate=6.25&down=3.5&years=30&from=preapproval");
+    expect(calculatorLink({ ...pre, kind: "estimate", amount: 2100 })).toBe("/calculator?mode=budget&monthly=2100");
+    expect(calculatorLink({ ...pre, loanType: "NACA" })).toContain("naca=1");
+  });
+  it("summarizes how they're paying", () => {
+    expect(financingSummary(pre)).toBe("Pre-approved up to $325,000 · FHA · 6.25% · 3.5% down · Lakeshore Home Loans");
+    expect(financingSummary({ ...pre, kind: "proof_of_funds", amount: 410000 })).toBe("Cash buyer · $410,000 proof of funds");
+  });
+  it("lists sponsored lenders for the buyer's state, rated ones first", () => {
+    const list = lendersFor([...SAMPLE_LENDERS, { ...SAMPLE_LENDERS[0], id: "x", states: ["IN"], rating: 4.9, reviews: 12 }], ["IN"]);
+    expect(list[0].id).toBe("x");
+    expect(list.every((l) => l.states.includes("IN"))).toBe(true);
+  });
+  it("drafts a NACA intro for renters by text and email", () => {
+    const d = simpleDrafts({ phone: "(708) 555-0166", email: "j@example.com" }, nacaIntroMessage({ clientFirst: "Jasmine", agentName: "Donna White", agentPhone: "" }), "NACA");
+    expect(d.map((x) => x.method)).toEqual(["text", "email"]);
+    expect(d[0].body).toContain("no down payment");
+  });
+});

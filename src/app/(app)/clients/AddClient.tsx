@@ -7,6 +7,10 @@ import { AgreementSender } from "./AgreementSender";
 import { agreementFor, agreementHeadsUp } from "@/lib/core/agreements";
 import { buyerDosAndDonts, sellerDosAndDonts } from "@/lib/core/clientTips";
 import { greetingName } from "@/lib/core/closing";
+import { nacaIntroMessage } from "@/lib/core/naca";
+import { askForFinancingMessage } from "@/lib/core/financing";
+import { simpleDrafts } from "@/lib/core/messages";
+import { SendPanel } from "@/components/SendPanel";
 
 export function AddClient({ stage, agentName, agentPhone, esign }: { stage: string; agentName: string; agentPhone: string; esign: { provider: string | null; url: string } }) {
   const [state, action, pending] = useActionState<ClientState, FormData>(addClient, {});
@@ -66,6 +70,20 @@ export function AddClient({ stage, agentName, agentPhone, esign }: { stage: stri
             email={state.added.email}
             title={state.added.intent === "Selling" ? "Seller do's and don'ts" : "Homebuyer do's and don'ts"}
             message={(state.added.intent === "Selling" ? sellerDosAndDonts : buyerDosAndDonts)({ clientFirst: greetingName(state.added.name), agentName, agentPhone })}
+          />
+        )}
+        {state.added && state.added.intent === "Renting" && (
+          <SendPanel
+            key={`n-${state.added.id}`} startOpen tone="green"
+            label="Introduce NACA" title={`Introduce ${greetingName(state.added.name)} to NACA?`}
+            drafts={simpleDrafts(state.added, nacaIntroMessage({ clientFirst: greetingName(state.added.name), agentName, agentPhone }), "A way to buy with no down payment: NACA")}
+          />
+        )}
+        {state.added && (state.added.intent === "Buying" || state.added.intent === "Investing") && !state.added.preApproved && state.added.loanProgram !== "cash" && (
+          <SendPanel
+            key={`f-${state.added.id}`} startOpen
+            label="Ask for pre-approval" title={`Ask ${greetingName(state.added.name)} for their pre-approval?`}
+            drafts={simpleDrafts(state.added, askForFinancingMessage({ clientFirst: greetingName(state.added.name), agentName, agentPhone }), "Your pre-approval letter")}
           />
         )}
         <button className="btn dark block" disabled={pending}>{pending ? "Adding…" : "Add client"}</button>

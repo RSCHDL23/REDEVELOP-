@@ -49,7 +49,7 @@ export type Suggestion = { date: string; start: number; end: number };
  * Next best times for a home that didn't fit: the earliest window where you, your
  * buyers and the home are all free, on the tour day (around the tour) and the 6 days after.
  */
-export async function suggestTimes(listingId: string, date: string, minutes: number, taken: [number, number][]): Promise<Suggestion[]> {
+export async function suggestTimes(listingId: string, date: string, minutes: number, taken: [number, number][], tourDayParty?: [number, number][]): Promise<Suggestion[]> {
   const { addDays } = await import("@/lib/core/deadlines");
   const { firstFit, intersect, intersectAll, subtract } = await import("@/lib/core/time");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !(minutes >= 15 && minutes <= 180)) return [];
@@ -59,7 +59,9 @@ export async function suggestTimes(listingId: string, date: string, minutes: num
     const ctx = await repo().getTourContext(day);
     const home = ctx.homes.find((h) => h.listing.id === listingId);
     if (!home) continue;
-    let free = intersect(intersectAll(ctx.participants.map((p) => p.free)), home.free);
+    // On the tour day, use the free times the agent edited by hand (if any).
+    const edited = i === 0 && Array.isArray(tourDayParty) ? tourDayParty.slice(0, 20).filter((w) => Array.isArray(w) && w.length === 2 && w.every((n) => Number.isInteger(n) && n >= 0 && n <= 1440)) : null;
+    let free = intersect(edited ?? intersectAll(ctx.participants.map((p) => p.free)), home.free);
     // On the tour day, keep clear of the tour itself (with 15 minutes to drive).
     if (i === 0) free = subtract(free, taken.slice(0, 20).map(([s, e]) => [Math.max(0, s - 15), Math.min(1440, e + 15)] as [number, number]));
     const start = firstFit(free, 0, minutes);

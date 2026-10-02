@@ -35,6 +35,10 @@ export async function toggleMilestone(formData: FormData) {
   const deal = await repo().getDeal(dealId);
   const m = deal?.milestones.find((x) => x.id === itemId);
   const closingNow = m?.kind === "closing" && !m.done; // read before the change
+  // Closing with earlier dates not checked off: verify those first.
+  if (closingNow && deal!.milestones.some((x) => x.kind !== "closing" && !x.done) && formData.get("skipVerify") !== "1") {
+    redirect(`/deals/${dealId}?tab=dates&verify=1`);
+  }
   await repo().toggleMilestone(dealId, itemId);
   refresh(dealId);
   // Checking off Closing: celebrate and send the after-closing checklist.
@@ -171,4 +175,38 @@ export async function addTodo(_prev: PersonState, formData: FormData): Promise<P
   await repo().addTask(parsed.data.dealId, { title: parsed.data.title, assignee: parsed.data.assignee || "You", due: parsed.data.due || null });
   revalidatePath(`/deals/${parsed.data.dealId}`);
   return { ok: "Added." };
+}
+
+/** "Before you close": checks off the dates the agent verified, then closes the deal. */
+export async function verifyAndClose(formData: FormData) {
+  const dealId = String(formData.get("dealId") ?? "");
+  const deal = dealId ? await repo().getDeal(dealId) : null;
+  if (!deal) return;
+  const closing = deal.milestones.find((m) => m.kind === "closing");
+  const open = deal.milestones.filter((m) => m.kind !== "closing" && !m.done).map((m) => m.id);
+  const checked = formData.getAll("verified").map(String).filter((id) => open.includes(id));
+  if (checked.length < open.length) redirect(`/deals/${dealId}?tab=dates&verify=1&missing=1`);
+  await repo().completeMilestones(dealId, checked);
+  if (closing && !closing.done) await repo().toggleMilestone(dealId, closing.id);
+  refresh(dealId);
+  redirect(`/deals/${dealId}?tab=dates&celebrate=1`);
+}
+
+export async function updatePerson(_prev: PersonState, formData: FormData): Promise<PersonState> {
+  const parsed = person.extend({ memberId: z.string().min(1) }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message };
+  const p = parsed.data;
+  if (p.email && !z.string().email().safeParse(p.email).success) return { error: "Check the email address." };
+  await repo().updateDealMember(p.dealId, p.memberId, { role: p.role, name: p.name, phone: p.phone || undefined, email: p.email || undefined });
+  revalidatePath(`/deals/${p.dealId}`);
+  return { ok: "Saved." };
+}
+
+export async function updateTodo(_prev: PersonState, formData: FormData): Promise<PersonState> {
+  const parsed = todo.extend({ taskId: z.string().min(1) }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message };
+  const t = parsed.data;
+  await repo().updateTask(t.dealId, t.taskId, { title: t.title, assignee: t.assignee || "You", due: t.due || null });
+  revalidatePath(`/deals/${t.dealId}`);
+  return { ok: "Saved." };
 }

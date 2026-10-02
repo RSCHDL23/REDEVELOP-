@@ -6,7 +6,7 @@ import "server-only";
 import { contractMilestones, addDays } from "@/lib/core/deadlines";
 import { hm, subtract, type Window } from "@/lib/core/time";
 import type { Repo } from "./repo";
-import type { AgentSummary, Attachment, Client, ClientReview, ContactPreference, Deal, DealMember, DealTask, HomeShare, Membership, License, Listing, PortfolioItem, Profile, ShowingRequest, WeeklyHours } from "./types";
+import type { AgentSummary, Attachment, Client, Financing, Message, MessageContact, ClientReview, ContactPreference, Deal, DealMember, DealTask, HomeShare, Membership, License, Listing, PortfolioItem, Profile, ShowingRequest, WeeklyHours } from "./types";
 import type { PublicProfile } from "./repo";
 import { nextSaturday, todayISO, toTimestamp, weekdayOf } from "./dates";
 
@@ -20,11 +20,11 @@ const snapshot = (l: Listing) => ({ address: l.address, city: `${l.city}, ${l.st
 const ME_ID = "demo-donna";
 type DemoFile = { id: string; token: string; name: string; mime: string; bytes: Uint8Array; expiresAt: string };
 const fileLink = (f: DemoFile): Attachment => ({ id: f.id, name: f.name, url: `/d/${f.token}`, expiresAt: f.expiresAt });
-type BaseClient = Omit<Client, "closedOn" | "remember" | "reviewToken" | "reviewRequestedAt" | "agreementSentAt" | "loanProgram" | "approvedMonthly" | "currentHousing" | "programSteps" | "qualifiedOn">
-  & Partial<Pick<Client, "closedOn" | "loanProgram" | "approvedMonthly" | "currentHousing" | "programSteps" | "qualifiedOn" | "agreementSentAt">>;
+type BaseClient = Omit<Client, "closedOn" | "remember" | "reviewToken" | "reviewRequestedAt" | "agreementSentAt" | "loanProgram" | "approvedMonthly" | "currentHousing" | "programSteps" | "qualifiedOn" | "financing">
+  & Partial<Pick<Client, "closedOn" | "loanProgram" | "approvedMonthly" | "currentHousing" | "programSteps" | "qualifiedOn" | "agreementSentAt" | "financing">>;
 const withClientDefaults = (c: BaseClient): Client => ({
   closedOn: null, remember: true, reviewToken: `tok-${c.id}`, reviewRequestedAt: null,
-  agreementSentAt: null, loanProgram: "unknown", approvedMonthly: null, currentHousing: null, programSteps: [], qualifiedOn: null, ...c,
+  agreementSentAt: null, loanProgram: "unknown", approvedMonthly: null, currentHousing: null, programSteps: [], qualifiedOn: null, financing: null, ...c,
 });
 const DEAL_CLIENTS: Record<string, string> = { "Ana Price": "c-price", "The Sandovals": "c-sandoval", "The Greens": "c-greens", "Tasha Greene": "c-greene", "Grace & Tom Ward": "c-ward" };
 
@@ -43,6 +43,8 @@ interface Store {
   deals: Deal[];
   hours: WeeklyHours[];
   homeWindows: Record<string, Window[]>;
+  contacts: MessageContact[];
+  messages: (Message & { withId: string; read: boolean })[];
 }
 
 function seed(): Store {
@@ -78,7 +80,9 @@ function seed(): Store {
       id, listingId, address: l.address, photoUrl: l.photoUrl, otherAgent: who, otherAgentName: who.name, buyerLabel: buyer,
       startsAt: toTimestamp(date, start), endsAt: toTimestamp(date, start + len), status, direction,
       proposedStartsAt: null, proposedEndsAt: null, responseNote: "", remindedAt: null, reminderCount: 0,
-      comments: "", arrivedAt: null, lateEta: null, feedback: null, attachments: [], clientId: clientIds[buyer] ?? null, home: snapshot(l), ...extra,
+      comments: "", arrivedAt: null, lateEta: null, feedback: null, attachments: [], clientId: clientIds[buyer] ?? null, home: snapshot(l),
+      createdAt: new Date(Date.now() - (id.charCodeAt(1) % 5 + 1) * 3600000).toISOString(),
+      decidedAt: status === "pending" ? null : new Date(Date.now() - (id.charCodeAt(1) % 3 + 1) * 1800000).toISOString(), ...extra,
     };
   };
   const requests = [
@@ -95,7 +99,8 @@ function seed(): Store {
     req("s4", "gra", null, "The Greens", addDays(today, 3), hm(16), 30, "sent", "declined"),
   ];
   const clients: Client[] = ([
-    { id: "c-alvarez", name: "Maria & Luis Alvarez", phone: "(708) 555-0111", email: "alvarez@example.com", preApproved: true, stage: "present", source: "manual", intent: "Buying", notes: "3 bed, under $650k, near the Brown Line", createdAt: toTimestamp(addDays(today, -40), hm(12)) },
+    { id: "c-alvarez", name: "Maria & Luis Alvarez", phone: "(708) 555-0111", email: "alvarez@example.com", preApproved: true, stage: "present", source: "manual", intent: "Buying", notes: "3 bed, under $650k, near the Brown Line", createdAt: toTimestamp(addDays(today, -40), hm(12)),
+      loanProgram: "conventional", financing: { kind: "preapproval", lender: "[Lender A] (sample)", loanType: "Conventional", purchasePrice: 650000, loanAmount: 585000, downPct: 10, ratePct: 6.5, termYears: 30, expiresOn: addDays(today, 60), amount: null, fileName: "Alvarez pre-approval (sample).pdf", fileId: null, savedAt: toTimestamp(addDays(today, -30), hm(12)) } },
     { id: "c-price", name: "Ana Price", phone: "(312) 555-0160", email: "ana@example.com", preApproved: true, stage: "present", source: "manual", intent: "Buying", notes: "", createdAt: toTimestamp(addDays(today, -60), hm(12)) },
     { id: "c-greens", name: "The Greens", phone: "(773) 555-0172", email: "greens@example.com", preApproved: false, stage: "present", source: "manual", intent: "Buying", notes: "Working with NACA", createdAt: toTimestamp(addDays(today, -30), hm(12)),
       loanProgram: "naca", approvedMonthly: 2350, currentHousing: 1650, programSteps: ["workshop", "counseling", "payment_shock", "qualified", "purchase_workshop"], qualifiedOn: addDays(today, -21), agreementSentAt: toTimestamp(addDays(today, -29), hm(10)) },
@@ -105,6 +110,7 @@ function seed(): Store {
     { id: "c-okafor", name: "Chidi Okafor", phone: "(773) 555-0190", email: "chidi@example.com", preApproved: true, stage: "past", source: "manual", intent: "Buying", notes: "Closed on a 2-flat in Avondale", createdAt: toTimestamp(addDays(today, -400), hm(12)), closedOn: addDays(today, 6 - 365) },
     { id: "c-holt", name: "Marcus & Jen Holt", phone: "(630) 555-0175", email: "holt@example.com", preApproved: true, stage: "past", source: "manual", intent: "Buying", notes: "Bought in Oak Park", createdAt: toTimestamp(addDays(today, -800), hm(12)), closedOn: addDays(today, 20 - 730) },
     { id: "c-nguyen", name: "Linh Nguyen", phone: "(312) 555-0107", email: "linh@example.com", preApproved: false, stage: "future", source: "link", intent: "Buying", notes: "", createdAt: toTimestamp(addDays(today, -1), hm(18)) },
+    { id: "c-cole", name: "Jasmine Cole", phone: "(708) 555-0166", email: "jasmine@example.com", preApproved: false, stage: "future", source: "link", intent: "Renting", notes: "2 bed apartment near the Blue Line", createdAt: toTimestamp(addDays(today, -2), hm(14)) },
     { id: "c-baker", name: "Rosa Baker", phone: "", email: "rosa@example.com", preApproved: false, stage: "future", source: "link", intent: "Selling", notes: "", createdAt: toTimestamp(addDays(today, -3), hm(9)) },
   ] as BaseClient[]).map(withClientDefaults);
   type DealExtra = Partial<Omit<Deal, "members" | "tasks">> & { members?: Omit<DealMember, "id">[]; tasks?: Omit<DealTask, "source">[] };
@@ -160,7 +166,7 @@ function seed(): Store {
       mlsAgentId: "70012345", idInMessages: "license", home: { address: "Your home (sample)", lat: 41.8855, lng: -87.7845 }, office: { address: "D. White Realty office (sample)", lat: 41.9435, lng: -87.6795 },
       reviewLinks: [{ label: "Zillow", url: "https://www.zillow.com/profile/" }, { label: "Google", url: "https://g.page/r/" }], rememberAuto: true, rememberChannel: "text",
       myResources: [{ title: "D. White Realty listing agreement (sample)", url: "https://example.com/forms/listing-agreement.pdf", category: "My forms" }], myAgent: null,
-      esignProvider: "dotloop", esignUrl: "", serviceAreas: ["Chicago", "Oak Park", "Evanston", "NW Indiana"], selfRoles: [] },
+      esignProvider: "dotloop", esignUrl: "", serviceAreas: ["Chicago", "Oak Park", "Evanston", "NW Indiana"], selfRoles: [], financing: null, notificationsSeenAt: null },
     contact: { preferred: "app", methods: ["app", "text"], textAfterCall: true },
     portfolio: [],
     licenses: [
@@ -169,9 +175,21 @@ function seed(): Store {
       { id: "lic-mlo", profession: "mortgage_loan_originator", state: "IL", number: "1234567", sponsor: "[Mortgage company]", expiresOn: null, ceHours: 8, status: "verified" },
     ],
     listings, requests, clients, deals, hours, homeWindows,
+    contacts: [
+      { id: "u-alvarez", name: "Maria Alvarez", context: "Your client" },
+      { id: "bell", name: "Marcus Bell", context: "Agent · showing 418 Maple Ave" },
+      { id: "patel", name: "Nina Patel", context: "Listing agent · 2519 W Giddings St" },
+      { id: "u-kara", name: "Kara Wills", context: "Lender · 6120 S Kenwood Ave" },
+    ],
+    messages: [
+      { id: "m1", withId: "bell", fromMe: false, body: "My buyers loved 418 Maple. Any chance we can come back Saturday morning?", at: toTimestamp(addDays(today, -1), hm(17, 5)), read: true },
+      { id: "m2", withId: "bell", fromMe: true, body: "Saturday 10 to 12 works. Send the request and I'll approve it.", at: toTimestamp(addDays(today, -1), hm(17, 20)), read: true },
+      { id: "m3", withId: "u-alvarez", fromMe: false, body: "Hi Donna! Can we see the Leland house this weekend? Luis is free after 11.", at: new Date(Date.now() - 50 * 60000).toISOString(), read: false },
+      { id: "m4", withId: "u-kara", fromMe: false, body: "Appraisal is ordered for Kenwood. I'll post the date once it's set.", at: toTimestamp(addDays(today, -1), hm(10, 2)), read: true },
+    ],
     files: [],
     shares: [
-      { id: "hs1", clientName: "Maria & Luis Alvarez", url: "https://www.zillow.com/homedetails/2840-W-Leland-Ave-Chicago-IL-60625/0_zpid/", source: "zillow", address: "2840 W Leland Ave, Chicago, IL 60625", note: "Love the backyard! Can we see it this weekend?", wantsTour: true, createdAt: toTimestamp(today, hm(8, 40)), seen: false },
+      { id: "hs1", clientName: "Maria & Luis Alvarez", url: "https://www.zillow.com/homedetails/2840-W-Leland-Ave-Chicago-IL-60625/0_zpid/", source: "zillow", address: "2840 W Leland Ave, Chicago, IL 60625", note: "Love the backyard! Can we see it this weekend?", wantsTour: true, createdAt: new Date(Date.now() - 3 * 3600000).toISOString(), seen: false },
       { id: "hs2", clientName: "Ana Price", url: "https://www.redfin.com/IL/Chicago/5400-S-Hyde-Park-Blvd-60615/home/0", source: "redfin", address: "5400 S Hyde Park Blvd, Chicago, IL 60615", note: "Backup option if Kenwood falls through", wantsTour: false, createdAt: toTimestamp(addDays(today, -1), hm(19)), seen: false },
     ],
     memberships: [
@@ -211,6 +229,7 @@ export const demoRepo: Repo = {
     r.proposedStartsAt = answer.status === "countered" ? answer.proposedStartsAt ?? null : null;
     r.proposedEndsAt = answer.status === "countered" ? answer.proposedEndsAt ?? null : null;
     r.responseNote = answer.note ?? "";
+    r.decidedAt = answer.status === "pending" ? null : new Date().toISOString();
   },
   async acceptNewTime(id) {
     const r = store().requests.find((x) => x.id === id);
@@ -244,6 +263,7 @@ export const demoRepo: Repo = {
       comments: input.comments ?? "", arrivedAt: null, lateEta: null, feedback: null,
       attachments: (input.attachmentIds ?? []).map((aid) => s.files.find((f) => f.id === aid)).filter((f): f is DemoFile => !!f).map(fileLink), clientId: input.clientId ?? null,
       home: l ? snapshot(l) : { address: m!.address, city: "", photoUrl: null, beds: null, baths: null, sqft: null },
+      createdAt: new Date().toISOString(), decidedAt: l?.instantShowings ? new Date().toISOString() : null,
     };
     s.requests.push(created);
     const c = s.clients.find((x) => x.id === input.clientId);
@@ -355,6 +375,43 @@ export const demoRepo: Repo = {
     const d = store().deals.find((x) => x.id === dealId);
     d?.tasks.push({ id: `${dealId}-t${Date.now()}`, ...t, done: false, source: "manual" });
   },
+  async updateDealMember(dealId, memberId, m) {
+    const p = store().deals.find((x) => x.id === dealId)?.members.find((x) => x.id === memberId);
+    if (p && !p.isYou) Object.assign(p, { role: m.role, name: m.name, phone: m.phone || undefined, email: m.email || undefined });
+  },
+  async updateTask(dealId, taskId, t) {
+    const x = store().deals.find((d) => d.id === dealId)?.tasks.find((y) => y.id === taskId);
+    if (x) Object.assign(x, t);
+  },
+  async completeMilestones(dealId, ids) {
+    const d = store().deals.find((x) => x.id === dealId);
+    for (const m of d?.milestones ?? []) if (ids.includes(m.id) && m.kind !== "closing") m.done = true;
+  },
+  async listThreads() {
+    const s = store();
+    return s.contacts
+      .map((c) => {
+        const ms = s.messages.filter((m) => m.withId === c.id).sort((a, b) => a.at.localeCompare(b.at));
+        const last = ms[ms.length - 1];
+        return last ? { withId: c.id, withName: c.name, context: c.context, last: `${last.fromMe ? "You: " : ""}${last.body}`, lastAt: last.at, unread: ms.filter((m) => !m.fromMe && !m.read).length } : null;
+      })
+      .filter((t): t is NonNullable<typeof t> => !!t)
+      .sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+  },
+  async getThread(withId) {
+    const s = store();
+    const c = s.contacts.find((x) => x.id === withId);
+    if (!c) return null;
+    const ms = s.messages.filter((m) => m.withId === withId).sort((a, b) => a.at.localeCompare(b.at));
+    for (const m of ms) m.read = true;
+    return { with: c, messages: ms.map(({ id, fromMe, body, at }) => ({ id, fromMe, body, at })) };
+  },
+  async sendMessage(toId, body) {
+    const s = store();
+    if (!s.contacts.some((c) => c.id === toId)) throw new Error("You can only message people you work with.");
+    s.messages.push({ id: `m-${Date.now()}`, withId: toId, fromMe: true, body, at: new Date().toISOString(), read: true });
+  },
+  async listMessageContacts() { return store().contacts; },
   async saveAttachment(file) {
     const f: DemoFile = { id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, token: crypto.randomUUID().replace(/-/g, ""), ...file, expiresAt: new Date(Date.now() + 14 * 86400000).toISOString() };
     store().files.push(f);

@@ -209,3 +209,12 @@ export function newTimeDrafts(s: Sender, o: { agentFirst: string; address: strin
   if (contact.phone) out.push({ method: "call", to: contact.phone, body, actionLabel: `Call ${o.agentFirst}` });
   return out;
 }
+
+/** Text, email (and optionally a call) drafts of one message, for whichever contact info is on file. */
+export function simpleDrafts(to: { phone?: string; email?: string }, body: string, subject: string, opts: { call?: boolean } = {}): Draft[] {
+  const out: Draft[] = [];
+  if (to.phone) out.push({ method: "text", to: to.phone, body, actionLabel: "Send text" });
+  if (to.email) out.push({ method: "email", to: to.email, subject, body, actionLabel: "Send email" });
+  if (to.phone && opts.call) out.push({ method: "call", to: to.phone, body, actionLabel: `Call ${to.phone}` });
+  return out;
+}
