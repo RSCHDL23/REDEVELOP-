@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { repo } from "@/lib/data";
 import { nextSaturday } from "@/lib/data/dates";
 import { licenseIdFor } from "@/lib/data/requestMessages";
+import { appOrigin } from "@/lib/server/origin";
 import { TourBuilder } from "./TourBuilder";
 
 export const metadata: Metadata = { title: "Auto-schedule a tour" };
@@ -16,7 +17,7 @@ export default async function TourPage({ searchParams }: { searchParams: Promise
         <h1 className="page-title">Auto-schedule a tour</h1>
         <p className="page-sub">Pick the homes. REschedule fits them around everyone&apos;s calendar and the shortest drive.</p>
       </header>
-      <TourBuilder ctx={ctx} places={{ home: me.home, office: me.office }} sender={{ name: me.fullName, brokerage: me.brokerage, phone: me.phone, email: me.email, licenseId: licenseIdFor(licenses, ctx.homes[0]?.listing.state) }} />
+      <TourBuilder ctx={ctx} origin={await appOrigin()} places={{ home: me.home, office: me.office }} sender={{ name: me.fullName, brokerage: me.brokerage, phone: me.phone, email: me.email, licenseId: licenseIdFor(licenses, ctx.homes[0]?.listing.state) }} />
     </main>
   );
 }

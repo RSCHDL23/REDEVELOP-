@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import type { Place, TourContext } from "@/lib/data/types";
 import { planTour, type TourPlan } from "@/lib/core/optimizer";
 import { driveTable } from "@/lib/core/drive";
-import { formatClock, intersectAll, type Window } from "@/lib/core/time";
+import { formatClock, intersect, intersectAll, type Window } from "@/lib/core/time";
 import { deviceLink, draftsFor, type Draft, type Sender } from "@/lib/core/messages";
 import { prettyDate } from "@/lib/data/dates";
-import { findAddress, sendTour, type SendTourState } from "./actions";
+import { findAddress, sendTour, suggestTimes, type SendTourState, type Suggestion } from "./actions";
+import { AttachDocs } from "@/components/AttachDocs";
+import type { Attachment } from "@/lib/data/types";
 import { HomeSnapshot } from "@/components/HomeSnapshot";
 
 const LENGTHS = [15, 30, 45];
@@ -22,12 +24,15 @@ type StartMode = "office" | "home" | "first" | "current" | "address";
 type Coords = { lat: number; lng: number };
 const hasCoords = (p: Place | null): p is Place & Coords => !!p && p.lat != null && p.lng != null;
 
-export function TourBuilder({ ctx, sender, places }: { ctx: TourContext; sender: Sender; places: { home: Place | null; office: Place | null } }) {
+export function TourBuilder({ ctx, sender, places, origin }: { ctx: TourContext; sender: Sender; places: { home: Place | null; office: Place | null }; origin: string }) {
   const router = useRouter();
   const [picked, setPicked] = useState<Set<string>>(() => new Set(ctx.homes.map((h) => h.listing.id)));
   const [length, setLength] = useState(30);
   const [plan, setPlan] = useState<TourPlan | null>(null);
   const [comments, setComments] = useState("");
+  const [docs, setDocs] = useState<Attachment[]>([]);
+  const [edits, setEdits] = useState<Record<string, { start: number; end: number }>>({});
+  const finalSlot = (st: { homeId: string; start: number; end: number }) => edits[st.homeId] ?? { start: st.start, end: st.end };
   const [mode, setMode] = useState<StartMode>(hasCoords(places.office) ? "office" : hasCoords(places.home) ? "home" : "first");
   const [current, setCurrent] = useState<Coords | null>(null);
   const [typed, setTyped] = useState("");
@@ -81,6 +86,7 @@ export function TourBuilder({ ctx, sender, places }: { ctx: TourContext; sender:
     const drive = driveTable(points);
     // "Start at first showing": no drive to the first stop.
     if (mode === "first") for (const h of homes) drive.start[h.listing.id] = 0;
+    setEdits({});
     setPlan(planTour({
       homes: homes.map((h) => ({ id: h.listing.id, free: h.free })),
       party,
@@ -174,6 +180,7 @@ export function TourBuilder({ ctx, sender, places }: { ctx: TourContext; sender:
       <div className="field">
         <label htmlFor="tour-comments">Note for listing agents (optional)</label>
         <textarea id="tour-comments" className="input" maxLength={500} value={comments} onChange={(e) => setComments(e.target.value)} placeholder="Added to every request, e.g. Buyers are pre-approved with a 20% down payment." />
+        <AttachDocs value={docs} onChange={setDocs} name="tourDocs" />
       </div>
 
       <button type="button" className="btn primary lg block" onClick={build} disabled={picked.size === 0}>
@@ -197,24 +204,34 @@ export function TourBuilder({ ctx, sender, places }: { ctx: TourContext; sender:
           </div>
 
           {plan.skipped.length > 0 && (
-            <p className="notice amber">
-              Didn&apos;t fit: {plan.skipped.map((id) => byId.get(id)?.listing.address).join(", ")}. Try another day or a shorter visit.
-            </p>
+            <div className="card status-card status-countered">
+              <span className="strong">Didn&apos;t fit in this tour</span>
+              {plan.skipped.map((id) => (
+                <NextBest key={id} listingId={id} address={byId.get(id)?.listing.address ?? ""} date={ctx.date} minutes={length} taken={plan.stops.map((x) => [finalSlot(x).start, finalSlot(x).end] as [number, number])} />
+              ))}
+            </div>
           )}
 
           <ol className="stack" style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {plan.stops.map((s, i) => {
-              const l = byId.get(s.homeId)!.listing;
+            {plan.stops.map((st, i) => {
+              const home = byId.get(st.homeId)!;
+              const l = home.listing;
               const a = l.listingAgent;
+              const slot = finalSlot(st);
               const drafts = draftsFor(
                 sender,
-                { listingAgentFirstName: a.name.split(" ")[0], address: l.address, dayLabel, timeLabel: `${formatClock(s.start)}–${formatClock(s.end)}`, buyerNames: ctx.clientLabel, preApproved: true, comments: comments.trim() || undefined },
+                { listingAgentFirstName: a.name.split(" ")[0], address: l.address, dayLabel, timeLabel: `${formatClock(slot.start)}–${formatClock(slot.end)}`, buyerNames: ctx.clientLabel, preApproved: true, comments: comments.trim() || undefined, attachments: docs.length ? docs.map((d) => ({ name: d.name, url: `${origin}${d.url}` })) : undefined },
                 { phone: a.phone, email: a.email, onApp: a.onApp, onlineUrl: a.contact.onlineUrl },
               );
               const preferred = a.onApp ? ["app"] : a.contact.methods;
+              const fits = intersect(party, home.free).some(([s0, e0]) => slot.start >= s0 && slot.end <= e0);
               return (
-                <li key={s.homeId}>
-                  <StopCard index={i + 1} address={l.address} time={`${formatClock(s.start)}–${formatClock(s.end)}`} drive={s.driveMinutes} wait={s.waitMinutes} agent={a.name} drafts={drafts} preferred={preferred} instant={l.instantShowings} />
+                <li key={st.homeId}>
+                  <StopCard
+                    index={i + 1} address={l.address} slot={slot} drive={st.driveMinutes} wait={st.waitMinutes} agent={a.name}
+                    drafts={drafts} preferred={preferred} instant={l.instantShowings} fits={fits}
+                    onTime={(start, minutes) => setEdits((e) => ({ ...e, [st.homeId]: { start, end: start + minutes } }))}
+                  />
                 </li>
               );
             })}
@@ -229,14 +246,16 @@ export function TourBuilder({ ctx, sender, places }: { ctx: TourContext; sender:
                   date: ctx.date,
                   buyerLabel: ctx.clientLabel,
                   comments: comments.trim(),
-                  stops: plan.stops.map((s) => {
-                    const a = byId.get(s.homeId)!.listing.listingAgent;
-                    return { listingId: s.homeId, start: s.start, end: s.end, method: a.onApp ? "app" : a.contact.preferred };
+                  attachmentIds: docs.map((d) => d.id),
+                  stops: plan.stops.map((st) => {
+                    const a = byId.get(st.homeId)!.listing.listingAgent;
+                    const slot = finalSlot(st);
+                    return { listingId: st.homeId, start: slot.start, end: slot.end, method: a.onApp ? "app" : a.contact.preferred };
                   }),
                 })}
               />
               <button className="btn dark lg block" disabled={sending}>{sending ? "Sending…" : `Send all ${plan.stops.length} requests`}</button>
-              <p className="tiny muted" style={{ textAlign: "center" }}>In-app requests go out right away. Use each card to send texts and emails from your phone.</p>
+              <p className="tiny muted" style={{ textAlign: "center" }}>In-app requests go out right away. Use each card to send texts and emails from your phone. Tap Edit on any stop to change its time or message first.</p>
             </form>
           )}
           {state.sent && <p className="notice">Sent {state.sent} showing requests. Track them under Showings → I requested.</p>}
@@ -247,23 +266,90 @@ export function TourBuilder({ ctx, sender, places }: { ctx: TourContext; sender:
   );
 }
 
-function StopCard({ index, address, time, drive, wait, agent, drafts, preferred, instant }: {
-  index: number; address: string; time: string; drive: number; wait: number; agent: string; drafts: Draft[]; preferred: string[]; instant: boolean;
+const HOURS = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+function ClockPicker({ value, onChange, label }: { value: number; onChange: (m: number) => void; label: string }) {
+  const h24 = Math.floor(value / 60), m = value % 60, pm = h24 >= 12, h12 = h24 % 12 || 12;
+  const set = (h: number, mm: number, isPm: boolean) => onChange(((h % 12) + (isPm ? 12 : 0)) * 60 + mm);
+  return (
+    <div className="row" style={{ gap: 4 }} role="group" aria-label={label}>
+      <select className="input" aria-label="Hour" value={h12} onChange={(e) => set(Number(e.target.value), m, pm)} style={{ padding: "0 6px" }}>{HOURS.map((h) => <option key={h} value={h}>{h}</option>)}</select>
+      <select className="input" aria-label="Minutes" value={m - (m % 5)} onChange={(e) => set(h12, Number(e.target.value), pm)} style={{ padding: "0 6px" }}>{Array.from({ length: 12 }, (_, i) => i * 5).map((x) => <option key={x} value={x}>{String(x).padStart(2, "0")}</option>)}</select>
+      <select className="input" aria-label="AM or PM" value={pm ? "PM" : "AM"} onChange={(e) => set(h12, m, e.target.value === "PM")} style={{ padding: "0 6px" }}><option>AM</option><option>PM</option></select>
+    </div>
+  );
+}
+
+function NextBest({ listingId, address, date, minutes, taken }: { listingId: string; address: string; date: string; minutes: number; taken: [number, number][] }) {
+  const [list, setList] = useState<Suggestion[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function find() { setBusy(true); setList(await suggestTimes(listingId, date, minutes, taken)); setBusy(false); }
+  const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      <div className="between">
+        <span className="small strong">{address}</span>
+        {!list && <button type="button" className="btn" style={{ minHeight: 36, background: "#fff" }} onClick={find} disabled={busy}>{busy ? "Looking…" : "Next best time"}</button>}
+      </div>
+      {list && list.length === 0 && <span className="small">No time works for everyone in the next 7 days. Try a shorter visit or ask the listing agent for more windows.</span>}
+      {list && list.map((x) => (
+        <div key={`${x.date}-${x.start}`} className="between small" style={{ background: "rgba(255,255,255,0.7)", padding: "8px 10px", borderRadius: 10 }}>
+          <span className="tabular"><span className="strong">{x.date === date ? "Same day" : prettyDate(x.date)}</span> · {formatClock(x.start)}–{formatClock(x.end)}</span>
+          <a className="btn" style={{ minHeight: 34 }} href={`/showings/new?listing=${listingId}&date=${x.date}&time=${hhmm(x.start)}&minutes=${minutes}`}>Request</a>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StopCard({ index, address, slot, drive, wait, agent, drafts, preferred, instant, fits, onTime }: {
+  index: number; address: string; slot: { start: number; end: number }; drive: number; wait: number; agent: string; drafts: Draft[]; preferred: string[]; instant: boolean;
+  fits: boolean; onTime: (start: number, minutes: number) => void;
 }) {
   const [method, setMethod] = useState(drafts.find((d) => preferred.includes(d.method))?.method ?? drafts[0]?.method);
-  const draft = drafts.find((d) => d.method === method);
+  const [editing, setEditing] = useState(false);
+  const [custom, setCustom] = useState<Record<string, { body: string; subject?: string }>>({});
+  const auto = drafts.find((d) => d.method === method);
+  const draft = auto ? { ...auto, ...(custom[auto.method] ?? {}) } : undefined;
   const link = draft ? deviceLink(draft) : null;
+  const minutes = slot.end - slot.start;
   return (
     <article className="card">
       <div className="row" style={{ alignItems: "flex-start" }}>
         <span className="avatar" style={{ width: 32, height: 32, fontSize: 14 }}>{index}</span>
         <div className="stack" style={{ gap: 1, flex: 1 }}>
           <span className="strong">{address}</span>
-          <span className="small tabular strong">{time}</span>
+          <span className="small tabular strong">{formatClock(slot.start)}–{formatClock(slot.end)}</span>
           <span className="tiny muted">{drive} min drive{wait > 0 ? ` · ${wait} min early` : ""} · {agent}</span>
         </div>
         {instant && <span className="pill blue">Instant</span>}
+        <button type="button" className="btn" style={{ minHeight: 34 }} onClick={() => setEditing((v) => !v)} aria-expanded={editing}>{editing ? "Done" : "Edit"}</button>
       </div>
+      {!fits && <span className="small strong" style={{ color: "var(--amber)" }}>⚠ This time is outside the home&apos;s showing window or someone&apos;s calendar.</span>}
+      {editing && (
+        <div className="stack" style={{ gap: 8, background: "var(--ground)", padding: 10, borderRadius: 12 }}>
+          <div className="grid-2">
+            <div className="field"><span className="small strong">Start</span><ClockPicker label="Start time" value={slot.start} onChange={(m) => onTime(m, minutes)} /></div>
+            <div className="field">
+              <label className="small strong" htmlFor={`len-${index}`}>Length</label>
+              <select id={`len-${index}`} className="input" value={minutes} onChange={(e) => onTime(slot.start, Number(e.target.value))}>
+                {Array.from({ length: 12 }, (_, i) => (i + 1) * 15).map((x) => <option key={x} value={x}>{x < 60 ? `${x} min` : `${Math.floor(x / 60)} hr${x >= 120 ? "s" : ""}${x % 60 ? ` ${x % 60} min` : ""}`}</option>)}
+              </select>
+            </div>
+          </div>
+          {draft && draft.method !== "app" && draft.method !== "online" && (
+            <>
+              {draft.subject !== undefined && (
+                <div className="field"><label className="small strong" htmlFor={`sub-${index}`}>Subject</label><input id={`sub-${index}`} className="input" value={draft.subject} onChange={(e) => setCustom((c) => ({ ...c, [draft.method]: { body: draft.body, subject: e.target.value } }))} /></div>
+              )}
+              <div className="field">
+                <label className="small strong" htmlFor={`body-${index}`}>Message</label>
+                <textarea id={`body-${index}`} className="input" rows={6} value={draft.body} onChange={(e) => setCustom((c) => ({ ...c, [draft.method]: { body: e.target.value, subject: draft.subject } }))} />
+              </div>
+              {custom[draft.method] && <button type="button" className="btn" style={{ minHeight: 34 }} onClick={() => setCustom((c) => { const n = { ...c }; delete n[draft.method]; return n; })}>Reset to the template</button>}
+            </>
+          )}
+        </div>
+      )}
       {drafts.length > 0 && (
         <>
           <div className="chips" role="group" aria-label="How to send">
@@ -273,13 +359,13 @@ function StopCard({ index, address, time, drive, wait, agent, drafts, preferred,
               </button>
             ))}
           </div>
-          {draft && (
+          {draft && !editing && (
             <>
               {draft.subject && <p className="small strong" style={{ margin: 0 }}>{draft.subject}</p>}
               <p className="small" style={{ margin: 0, whiteSpace: "pre-wrap", background: "var(--ground)", padding: 10, borderRadius: 10 }}>{draft.body}</p>
-              {link && <a className="btn block" href={link} target={draft.method === "online" ? "_blank" : undefined} rel="noreferrer">{draft.actionLabel}</a>}
             </>
           )}
+          {draft && link && <a className="btn block" href={link} target={draft.method === "online" ? "_blank" : undefined} rel="noreferrer">{draft.actionLabel}</a>}
         </>
       )}
     </article>

@@ -13,7 +13,8 @@ export const metadata: Metadata = { title: "Today" };
 
 export default async function TodayPage() {
   const r = repo();
-  const [me, requests, deals, clients] = await Promise.all([r.getMe(), r.listRequests(), r.listDeals(), r.listClients()]);
+  const [me, requests, deals, clients, shares] = await Promise.all([r.getMe(), r.listRequests(), r.listDeals(), r.listClients(), r.listHomeShares()]);
+  const newShares = shares.filter((x) => !x.seen);
   const today = todayISO();
   const hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", hour: "numeric", hourCycle: "h23" }).format(new Date()));
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
@@ -64,6 +65,13 @@ export default async function TodayPage() {
       </section>
 
       <TripAlerts trips={tripsFor(requests, clients, me, today)} />
+
+      {newShares.length > 0 && (
+        <Link href="/clients#shared" className="card accent" style={{ color: "var(--ink)" }}>
+          <span className="strong">🏠 {newShares.length} home{newShares.length > 1 ? "s" : ""} from your clients</span>
+          <span className="small muted">{newShares.slice(0, 2).map((h) => `${h.clientName.split(" ")[0]}: ${h.address.split(",")[0]}`).join(" · ")}</span>
+        </Link>
+      )}
 
       <Link href="/tour" className="card dark" style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
         <span className="avatar" style={{ borderRadius: 12 }} aria-hidden="true">

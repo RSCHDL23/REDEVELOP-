@@ -1,6 +1,6 @@
 import type { Profession } from "@/lib/core/access";
 import type { ContactMethod } from "@/lib/core/messages";
-import type { Client, ClientReview, ClientStage, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, RequestStatus, ShowingFeedback, ShowingRequest, TourContext, WeeklyHours } from "./types";
+import type { Attachment, Client, ClientReview, ClientStage, ContactPreference, Deal, DealMember, EarnestHolder, HomeShare, Membership, MyResource, License, Listing, PortfolioItem, Profile, RequestStatus, ShowingFeedback, ShowingRequest, TourContext, WeeklyHours } from "./types";
 
 export interface NewRequest {
   /** A home in the system, or a typed-in home with its listing agent. */
@@ -12,6 +12,7 @@ export interface NewRequest {
   endsAt: string;
   method: ContactMethod;
   comments?: string;
+  attachmentIds?: string[];
 }
 
 export interface NewDeal {
@@ -24,6 +25,11 @@ export interface NewDeal {
   closingDate: string;
   loanType: string;
   hasHoa: boolean;
+  earnestAmount: number | null;
+  earnestHolder: EarnestHolder | null;
+  earnestHolderName: string;
+  /** To-dos from the template, after the agent unchecks any they don't want. */
+  tasks: { title: string; assignee: string; due: string | null }[];
   /** Final dates for each milestone, after any edits. */
   milestones: { kind: string; label: string; due: string }[];
 }
@@ -47,7 +53,7 @@ export interface PublicProfile {
 /** Everything the screens need. Implemented by the demo store and by Supabase. */
 export interface Repo {
   getMe(): Promise<Profile>;
-  updateMe(patch: Partial<Pick<Profile, "fullName" | "phone" | "tagline" | "bio" | "brokerage" | "headshotUrl" | "logoUrl" | "selfRoles" | "websites" | "mapApp" | "mlsAgentId" | "idInMessages" | "home" | "office" | "reviewLinks" | "rememberAuto" | "rememberChannel">>): Promise<void>;
+  updateMe(patch: Partial<Pick<Profile, "fullName" | "phone" | "tagline" | "bio" | "brokerage" | "headshotUrl" | "logoUrl" | "selfRoles" | "websites" | "mapApp" | "mlsAgentId" | "idInMessages" | "home" | "office" | "reviewLinks" | "rememberAuto" | "rememberChannel" | "myResources">>): Promise<void>;
 
   getContactPreference(): Promise<ContactPreference>;
   saveContactPreference(pref: ContactPreference): Promise<void>;
@@ -102,6 +108,25 @@ export interface Repo {
   getDeal(id: string): Promise<Deal | null>;
   createDeal(input: NewDeal): Promise<string>;
   setMilestoneDate(dealId: string, milestoneId: string, due: string): Promise<void>;
+  addDealMember(dealId: string, m: Pick<DealMember, "role" | "name" | "phone" | "email">): Promise<void>;
+  removeDealMember(dealId: string, memberId: string): Promise<void>;
+  addTask(dealId: string, t: { title: string; assignee: string; due: string | null }): Promise<void>;
+
+  /** Documents attached to showing requests, shared by private link. */
+  saveAttachment(file: { name: string; mime: string; bytes: Uint8Array }): Promise<{ id: string; token: string }>;
+  /** Demo returns the bytes; Supabase returns the storage path for a signed download link. */
+  getAttachment(token: string): Promise<{ name: string; mime: string; bytes?: Uint8Array; path?: string } | null>;
+
+  /** Buyers send homes from Zillow / Redfin / Realtor.com to their agent. */
+  listHomeShares(): Promise<HomeShare[]>;
+  shareHome(input: { url: string; source: HomeShare["source"]; address: string; note: string; wantsTour: boolean }): Promise<void>;
+  markShareSeen(id: string): Promise<void>;
+  setMyAgent(slug: string): Promise<boolean>;
+
+  listMemberships(): Promise<Membership[]>;
+  addMembership(m: Omit<Membership, "id" | "dataAccess">): Promise<void>;
+  removeMembership(id: string): Promise<void>;
+  requestMlsAccess(id: string): Promise<void>;
   toggleTask(dealId: string, taskId: string): Promise<void>;
   toggleMilestone(dealId: string, milestoneId: string): Promise<void>;
   postLoanUpdate(dealId: string, status: string, note: string): Promise<void>;

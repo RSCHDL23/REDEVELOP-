@@ -4,6 +4,7 @@ import { repo } from "@/lib/data";
 import type { RequestStatus, ShowingRequest } from "@/lib/data/types";
 import { dateOf, minutesOfDay, prettyDate, todayISO } from "@/lib/data/dates";
 import { HomeSnapshot } from "@/components/HomeSnapshot";
+import { appOrigin } from "@/lib/server/origin";
 import { nudgeFor } from "@/lib/data/requestMessages";
 import { formatClock } from "@/lib/core/time";
 import { Empty } from "@/components/ui";
@@ -53,6 +54,7 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
   const r = repo();
   const [all, me, licenses] = await Promise.all([r.listRequests(), r.getMe(), r.listLicenses()]);
   const today = todayISO();
+  const origin = await appOrigin();
   const mine = all.filter((x) => x.direction === view).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   const filter = FILTERS.some((f) => f.id === show) ? show : "all";
   const shown = filter === "all" ? mine.filter((x) => x.status !== "cancelled") : mine.filter((x) => x.status === filter);
@@ -99,7 +101,7 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
       {shown.map((x) => {
         const s = STATUS[x.status];
         const agentFirst = x.otherAgent.name.split(" ")[0] || "the listing agent";
-        const resend = view === "sent" ? nudgeFor("resend", x, me, licenses) : null;
+        const resend = view === "sent" ? nudgeFor("resend", x, me, licenses, origin) : null;
         const canStart = view === "sent" && x.status === "approved" && dateOf(x.startsAt) <= today;
         const slot = (a: string, b: string) => ({ date: dateOf(a), start: minutesOfDay(a), minutes: Math.max(15, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000)) });
         return (
@@ -128,6 +130,11 @@ export default async function ShowingsPage({ searchParams }: { searchParams: Pro
               </p>
             )}
             {x.responseNote && <p className="small" style={{ margin: 0 }}>&ldquo;{x.responseNote}&rdquo;</p>}
+            {x.attachments.length > 0 && (
+              <div className="chips">
+                {x.attachments.map((a) => <a key={a.id} className="chip row" style={{ color: "var(--ink)" }} href={a.url} target="_blank" rel="noreferrer">📎 {a.name}</a>)}
+              </div>
+            )}
             {(x.arrivedAt || x.feedback) && (
               <div className="chips">
                 {x.arrivedAt && <span className="pill solid">📍 Arrived {formatClock(minutesOfDay(x.arrivedAt))}</span>}

@@ -6,6 +6,11 @@ import { dateOf, minutesOfDay, prettyDate, todayISO } from "@/lib/data/dates";
 import { formatClock } from "@/lib/core/time";
 import { Empty, Initials } from "@/components/ui";
 import { AddClient } from "./AddClient";
+import { TipsSender } from "./TipsButton";
+import { buyerDosAndDonts, sellerDosAndDonts } from "@/lib/core/clientTips";
+import { greetingName } from "@/lib/core/closing";
+import { SITE_NAMES } from "@/lib/core/listingLinks";
+import { markSeen } from "../homes/share/actions";
 import { moveClient } from "./actions";
 
 export const metadata: Metadata = { title: "Clients" };
@@ -22,7 +27,8 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   const { stage = "present" } = await searchParams;
   const current = STAGES.find((s) => s.id === stage) ?? STAGES[0];
   const r = repo();
-  const [clients, requests, deals] = await Promise.all([r.listClients(), r.listRequests(), r.listDeals()]);
+  const [clients, requests, deals, shares, me] = await Promise.all([r.listClients(), r.listRequests(), r.listDeals(), r.listHomeShares(), r.getMe()]);
+  const newShares = shares.filter((x) => !x.seen);
   const today = todayISO();
   const list = clients.filter((c) => c.stage === current.id);
   const count = (s: ClientStage) => clients.filter((c) => c.stage === s).length;
@@ -46,7 +52,33 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
       </nav>
       <p className="small muted" style={{ margin: 0 }}>{current.hint}</p>
 
-      <AddClient stage={current.id} />
+      {shares.length > 0 && (
+        <section className="stack" id="shared">
+          <h2 className="section-label">Homes your clients sent {newShares.length > 0 && <span className="pill solid">{newShares.length} new</span>}</h2>
+          {shares.slice(0, 6).map((h) => {
+            const client = clients.find((c) => h.clientName.startsWith(c.name));
+            return (
+              <article key={h.id} className={`card ${h.seen ? "" : "accent"}`}>
+                <div className="between" style={{ alignItems: "flex-start" }}>
+                  <span className="stack" style={{ gap: 1 }}>
+                    <span className="strong">{h.address || "Home link"}</span>
+                    <span className="small muted">From {h.clientName} · {SITE_NAMES[h.source]}{h.wantsTour ? " · wants to see it" : ""}</span>
+                  </span>
+                  {!h.seen && <span className="pill blue">New</span>}
+                </div>
+                {h.note && <span className="small">&ldquo;{h.note}&rdquo;</span>}
+                <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
+                  <a className="btn" href={h.url} target="_blank" rel="noreferrer">Open on {SITE_NAMES[h.source]}</a>
+                  <Link className="btn primary" href={`/showings/new?address=${encodeURIComponent(h.address)}${client ? `&client=${client.id}` : ""}`}>Request showing</Link>
+                  {!h.seen && <form action={markSeen}><input type="hidden" name="id" value={h.id} /><button className="btn">Mark seen</button></form>}
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      )}
+
+      <AddClient stage={current.id} agentName={me.fullName} agentPhone={me.phone} />
 
       {list.length === 0 && <Empty>{current.id === "future" ? "No new leads yet. Share your personal link or QR code (under My link & QR) so clients can connect with you." : "No clients here yet."}</Empty>}
 
@@ -85,6 +117,13 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
               {c.email && <a className="btn" href={`mailto:${c.email}`}>Email</a>}
               {c.stage !== "past" && <Link className="btn" href={`/showings/new?client=${c.id}`}>Request showing</Link>}
               {c.stage !== "past" && !deal && <Link className="btn" href={`/deals/new?client=${c.id}`}>Start deal</Link>}
+              {c.stage !== "past" && (
+                <TipsSender
+                  name={c.name} phone={c.phone} email={c.email}
+                  title={c.intent === "Selling" ? "Seller do's and don'ts" : "Homebuyer do's and don'ts"}
+                  message={(c.intent === "Selling" ? sellerDosAndDonts : buyerDosAndDonts)({ clientFirst: greetingName(c.name), agentName: me.fullName, agentPhone: me.phone })}
+                />
+              )}
             </div>
 
             <form action={moveClient} className="row small" style={{ gap: 6, flexWrap: "wrap" }}>

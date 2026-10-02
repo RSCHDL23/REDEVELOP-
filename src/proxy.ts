@@ -7,8 +7,8 @@ import { isDemoMode, supabaseAnonKey, supabaseUrl } from "@/lib/env";
  * visitors to the sign-in page. Real permission checks happen in the database.
  */
 export async function proxy(request: NextRequest) {
-  // Sign-in pages, professionals' public profile links (/p/...) and review links (/r/...) need no account.
-  const isPublic = ["/login", "/auth", "/p/", "/r/"].some((p) => request.nextUrl.pathname.startsWith(p));
+  // Sign-in pages, professionals' public profile links (/p/...) and review links (/r/...) and private document links (/d/...) need no account.
+  const isPublic = ["/login", "/auth", "/p/", "/r/", "/d/"].some((p) => request.nextUrl.pathname.startsWith(p));
 
   if (isDemoMode) {
     if (!isPublic && !request.cookies.get("re_demo")) return NextResponse.redirect(new URL("/login", request.url));

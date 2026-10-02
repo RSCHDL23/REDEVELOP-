@@ -5,6 +5,8 @@ import Link from "next/link";
 import { LengthSelect, TimeSelect } from "@/components/TimeFields";
 import { createRequest, type NewRequestState } from "../actions";
 import { HomeSnapshot } from "@/components/HomeSnapshot";
+import { AttachDocs } from "@/components/AttachDocs";
+import type { Attachment } from "@/lib/data/types";
 
 type Home = { id: string; address: string; city: string; photoUrl: string | null; source: string; agent: string; preferred: string; methods: string[]; minutes: number; instant: boolean; beds: number; baths: number; sqft: number | null };
 type ClientOption = { id: string; name: string; preApproved: boolean };
@@ -14,14 +16,16 @@ const METHOD_LABEL: Record<string, string> = {
 };
 const SOURCE_LABEL: Record<string, string> = { mls: "MLS", fsbo: "FSBO", app: "REschedule" };
 
-export function NewRequestForm({ homes, clients, defaultListing, defaultClient, defaultDate }: {
+export function NewRequestForm({ homes, clients, defaultListing, defaultClient, defaultDate, defaultStart, defaultMinutes, defaultAddress }: {
   homes: Home[]; clients: ClientOption[]; defaultListing?: string; defaultClient?: string; defaultDate: string;
+  defaultStart?: number; defaultMinutes?: number; defaultAddress?: string;
 }) {
   const [state, action, pending] = useActionState<NewRequestState, FormData>(createRequest, {});
   const initial = homes.find((h) => h.id === defaultListing) ?? null;
   const [home, setHome] = useState<Home | null>(initial);
-  const [typed, setTyped] = useState(false); // a typed-in home that isn't in the system
-  const [query, setQuery] = useState(initial ? `${initial.address}, ${initial.city}` : "");
+  const [typed, setTyped] = useState(!initial && !!defaultAddress); // a typed-in home that isn't in the system
+  const [query, setQuery] = useState(initial ? `${initial.address}, ${initial.city}` : defaultAddress ?? "");
+  const [docs, setDocs] = useState<Attachment[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [clientId, setClientId] = useState(clients.some((c) => c.id === defaultClient) ? defaultClient! : clients[0]?.id ?? "new");
@@ -139,8 +143,8 @@ export function NewRequestForm({ homes, clients, defaultListing, defaultClient, 
         <label htmlFor="date">Date</label>
         <input id="date" name="date" type="date" className="input" defaultValue={defaultDate} required />
       </div>
-      <TimeSelect name="time" defaultMinutes={13 * 60} />
-      <LengthSelect defaultValue={home?.minutes ?? 30} key={home?.id ?? "none"} />
+      <TimeSelect name="time" defaultMinutes={defaultStart ?? 13 * 60} />
+      <LengthSelect defaultValue={defaultMinutes ?? home?.minutes ?? 30} key={home?.id ?? "none"} />
 
       {/* Buyer: from your saved clients, or someone new. */}
       <div className="field">
@@ -166,8 +170,9 @@ export function NewRequestForm({ homes, clients, defaultListing, defaultClient, 
       <div className="field">
         <label htmlFor="comments">Comments for the listing agent (optional)</label>
         <textarea id="comments" name="comments" className="input" maxLength={500} placeholder="e.g. Buyers are relocating from Atlanta; we may run 5 minutes late." />
-        <span className="tiny muted">Your name, license number, brokerage, phone and email are added automatically.</span>
+        <span className="tiny muted">Your name, license or MLS ID, brokerage, phone and email are added automatically.</span>
       </div>
+      <AttachDocs value={docs} onChange={setDocs} />
 
       {state.error && <p className="error" role="alert">{state.error}</p>}
       <button className="btn primary lg block" disabled={pending || (!home && !typed)}>{pending ? "Sending…" : "Send request"}</button>

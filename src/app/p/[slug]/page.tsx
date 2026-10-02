@@ -79,6 +79,7 @@ export default async function PublicProfilePage({ params }: Props) {
         )}
 
         <ConnectForm slug={p.slug} firstName={first} />
+        <a className="btn block" href={`/homes/share?agent=${p.slug}`}>Already on REschedule? Make {first} your agent</a>
 
         <p className="tiny muted" style={{ textAlign: "center" }}>
           <img src="/wordmark-light.png" alt="REschedule" style={{ height: 16, verticalAlign: "middle" }} />

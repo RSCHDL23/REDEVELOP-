@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { repo } from "@/lib/data";
 
-export type ClientState = { ok?: string; error?: string };
+export type ClientState = { ok?: string; error?: string; added?: { name: string; phone: string; email: string; intent: string } };
 
 const newClient = z.object({
   name: z.string().trim().min(1, "Add a name.").max(80),
@@ -23,7 +23,7 @@ export async function addClient(_prev: ClientState, formData: FormData): Promise
   if (f.email && !z.string().email().safeParse(f.email).success) return { error: "Check the email address." };
   await repo().addClient({ name: f.name, phone: f.phone, email: f.email, preApproved: f.preApproved === "on", stage: f.stage, intent: f.intent, notes: f.notes });
   revalidatePath("/clients");
-  return { ok: `Added ${f.name}.` };
+  return { ok: `Added ${f.name}.`, added: { name: f.name, phone: f.phone, email: f.email, intent: f.intent } };
 }
 
 export async function moveClient(formData: FormData) {

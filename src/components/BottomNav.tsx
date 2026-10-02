@@ -8,6 +8,7 @@ const tabs = [
   { href: "/tour", label: "Tour", icon: <path d="M13 2 4 14h7l-1 8 9-12h-7z" /> },
   { href: "/clients", label: "Clients", icon: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6" /></> },
   { href: "/deals", label: "Deals", icon: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /> },
+  { href: "/resources", label: "REsource", icon: <><path d="M4 19.5V5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z" /><path d="M8 7h7M8 11h5" /></> },
   { href: "/profile", label: "Profile", icon: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></> },
 ];
 

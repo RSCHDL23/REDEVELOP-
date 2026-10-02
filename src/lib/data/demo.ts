@@ -6,7 +6,7 @@ import "server-only";
 import { contractMilestones, addDays } from "@/lib/core/deadlines";
 import { hm, subtract, type Window } from "@/lib/core/time";
 import type { Repo } from "./repo";
-import type { AgentSummary, Client, ClientReview, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, WeeklyHours } from "./types";
+import type { AgentSummary, Attachment, Client, ClientReview, ContactPreference, Deal, DealMember, DealTask, HomeShare, Membership, License, Listing, PortfolioItem, Profile, ShowingRequest, WeeklyHours } from "./types";
 import type { PublicProfile } from "./repo";
 import { nextSaturday, todayISO, toTimestamp, weekdayOf } from "./dates";
 
@@ -18,6 +18,8 @@ const agent = (id: string, name: string, phone: string, preferred: AgentSummary[
 const snapshot = (l: Listing) => ({ address: l.address, city: `${l.city}, ${l.state}`, photoUrl: l.photoUrl, beds: l.beds, baths: l.baths, sqft: l.sqft, lat: l.lat, lng: l.lng });
 
 const ME_ID = "demo-donna";
+type DemoFile = { id: string; token: string; name: string; mime: string; bytes: Uint8Array };
+const fileLink = (f: DemoFile): Attachment => ({ id: f.id, name: f.name, url: `/d/${f.token}` });
 type BaseClient = Omit<Client, "closedOn" | "remember" | "reviewToken" | "reviewRequestedAt"> & Partial<Pick<Client, "closedOn">>;
 const withClientDefaults = (c: BaseClient): Client => ({ closedOn: null, remember: true, reviewToken: `tok-${c.id}`, reviewRequestedAt: null, ...c });
 const DEAL_CLIENTS: Record<string, string> = { "Ana Price": "c-price", "The Sandovals": "c-sandoval", "The Greens": "c-greens", "Tasha Greene": "c-greene", "Grace & Tom Ward": "c-ward" };
@@ -31,6 +33,9 @@ interface Store {
   requests: ShowingRequest[];
   clients: Client[];
   reviews: ClientReview[];
+  files: DemoFile[];
+  shares: HomeShare[];
+  memberships: Membership[];
   deals: Deal[];
   hours: WeeklyHours[];
   homeWindows: Record<string, Window[]>;
@@ -69,7 +74,7 @@ function seed(): Store {
       id, listingId, address: l.address, photoUrl: l.photoUrl, otherAgent: who, otherAgentName: who.name, buyerLabel: buyer,
       startsAt: toTimestamp(date, start), endsAt: toTimestamp(date, start + len), status, direction,
       proposedStartsAt: null, proposedEndsAt: null, responseNote: "", remindedAt: null, reminderCount: 0,
-      comments: "", arrivedAt: null, lateEta: null, feedback: null, clientId: clientIds[buyer] ?? null, home: snapshot(l), ...extra,
+      comments: "", arrivedAt: null, lateEta: null, feedback: null, attachments: [], clientId: clientIds[buyer] ?? null, home: snapshot(l), ...extra,
     };
   };
   const requests = [
@@ -97,20 +102,24 @@ function seed(): Store {
     { id: "c-nguyen", name: "Linh Nguyen", phone: "(312) 555-0107", email: "linh@example.com", preApproved: false, stage: "future", source: "link", intent: "Buying", notes: "", createdAt: toTimestamp(addDays(today, -1), hm(18)) },
     { id: "c-baker", name: "Rosa Baker", phone: "", email: "rosa@example.com", preApproved: false, stage: "future", source: "link", intent: "Selling", notes: "", createdAt: toTimestamp(addDays(today, -3), hm(9)) },
   ] as BaseClient[]).map(withClientDefaults);
-  const mkDeal = (id: string, address: string, city: string, side: Deal["side"], stage: string, acceptance: string, closing: string, loanType: string, clientName: string, extra: Partial<Deal> = {}): Deal => {
+  type DealExtra = Partial<Omit<Deal, "members" | "tasks">> & { members?: Omit<DealMember, "id">[]; tasks?: Omit<DealTask, "source">[] };
+  const mkDeal = (id: string, address: string, city: string, side: Deal["side"], stage: string, acceptance: string, closing: string, loanType: string, clientName: string, extra: DealExtra = {}): Deal => {
     const ms = contractMilestones({ acceptance, closing, mortgageContingencyDays: loanType === "Cash" ? undefined : 21 });
+    const { members, tasks, ...rest } = extra;
     return {
       id, address, city, side, stage, acceptanceDate: acceptance, closingDate: closing, loanType, clientName,
       clientId: DEAL_CLIENTS[clientName] ?? null,
-      hasHoa: false,
+      hasHoa: false, earnestAmount: null, earnestHolder: null, earnestHolderName: "",
       milestones: ms.map((m, i) => ({ id: `${id}-m${i}`, kind: m.kind, label: m.label, due: m.due, done: m.due < today })),
-      members: [{ role: side === "seller" ? "listing_agent" : "buyers_agent", name: "Donna White", isYou: true }],
-      tasks: [], loanUpdates: [], ...extra,
+      members: (members ?? [{ role: side === "seller" ? "listing_agent" : "buyers_agent", name: "Donna White", isYou: true }]).map((m, i) => ({ id: `${id}-p${i}`, ...m })),
+      tasks: (tasks ?? []).map((t) => ({ ...t, source: "auto" as const })),
+      loanUpdates: [], ...rest,
     };
   };
   const kenwoodAccepted = addDays(today, -3);
   const deals: Deal[] = [
     mkDeal("kenwood", "6120 S Kenwood Ave", "Chicago, IL", "buyer", "Inspection", kenwoodAccepted, addDays(today, 29), "Conventional", "Ana Price", {
+      earnestAmount: 10000, earnestHolder: "listing_brokerage", earnestHolderName: "[Listing brokerage] escrow",
       members: [
         { role: "buyers_agent", name: "Donna White", isYou: true },
         { role: "buyer", name: "Ana Price", phone: "(312) 555-0160" },
@@ -144,7 +153,8 @@ function seed(): Store {
   return {
     me: { id: ME_ID, fullName: "Donna White", email: "donna@example.com", phone: "(708) 555-0123", tagline: "", bio: "Chicagoland and NW Indiana agent and loan officer", headshotUrl: null, logoUrl: null, brokerage: "D. White Realty", slug: "donna-white", websites: [{ label: "D. White Realty", url: "https://example.com" }], mapApp: "google",
       mlsAgentId: "70012345", idInMessages: "license", home: { address: "Your home (sample)", lat: 41.8855, lng: -87.7845 }, office: { address: "D. White Realty office (sample)", lat: 41.9435, lng: -87.6795 },
-      reviewLinks: [{ label: "Zillow", url: "https://www.zillow.com/profile/" }, { label: "Google", url: "https://g.page/r/" }], rememberAuto: true, rememberChannel: "text", serviceAreas: ["Chicago", "Oak Park", "Evanston", "NW Indiana"], selfRoles: [] },
+      reviewLinks: [{ label: "Zillow", url: "https://www.zillow.com/profile/" }, { label: "Google", url: "https://g.page/r/" }], rememberAuto: true, rememberChannel: "text",
+      myResources: [{ title: "D. White Realty listing agreement (sample)", url: "https://example.com/forms/listing-agreement.pdf", category: "My forms" }], myAgent: null, serviceAreas: ["Chicago", "Oak Park", "Evanston", "NW Indiana"], selfRoles: [] },
     contact: { preferred: "app", methods: ["app", "text"], textAfterCall: true },
     portfolio: [],
     licenses: [
@@ -153,6 +163,16 @@ function seed(): Store {
       { id: "lic-mlo", profession: "mortgage_loan_originator", state: "IL", number: "1234567", sponsor: "[Mortgage company]", expiresOn: null, ceHours: 8, status: "verified" },
     ],
     listings, requests, clients, deals, hours, homeWindows,
+    files: [],
+    shares: [
+      { id: "hs1", clientName: "Maria & Luis Alvarez", url: "https://www.zillow.com/homedetails/2840-W-Leland-Ave-Chicago-IL-60625/0_zpid/", source: "zillow", address: "2840 W Leland Ave, Chicago, IL 60625", note: "Love the backyard! Can we see it this weekend?", wantsTour: true, createdAt: toTimestamp(today, hm(8, 40)), seen: false },
+      { id: "hs2", clientName: "Ana Price", url: "https://www.redfin.com/IL/Chicago/5400-S-Hyde-Park-Blvd-60615/home/0", source: "redfin", address: "5400 S Hyde Park Blvd, Chicago, IL 60615", note: "Backup option if Kenwood falls through", wantsTour: false, createdAt: toTimestamp(addDays(today, -1), hm(19)), seen: false },
+    ],
+    memberships: [
+      { id: "mb1", kind: "association", name: "National Association of REALTORS®", memberId: "", url: "https://www.nar.realtor", dataAccess: "none" },
+      { id: "mb2", kind: "association", name: "Illinois REALTORS®", memberId: "", url: "https://www.illinoisrealtors.org", dataAccess: "none" },
+      { id: "mb3", kind: "mls", name: "MRED (Midwest Real Estate Data)", memberId: "", url: "", dataAccess: "none" },
+    ],
     reviews: [
       { name: "Chidi O.", stars: 5, body: "Donna found us a 2-flat that pays half our mortgage. She knew every lender rule and kept us calm through appraisal.", at: toTimestamp(addDays(today, -300), hm(12)) },
       { name: "Marcus & Jen H.", stars: 5, body: "Fast, honest and always picked up the phone.", at: toTimestamp(addDays(today, -700), hm(12)) },
@@ -215,7 +235,8 @@ export const demoRepo: Repo = {
       photoUrl: l?.photoUrl ?? null, otherAgent: who, otherAgentName: who.name, buyerLabel: input.buyerLabel,
       startsAt: input.startsAt, endsAt: input.endsAt, status: l?.instantShowings ? "approved" : "pending", direction: "sent",
       proposedStartsAt: null, proposedEndsAt: null, responseNote: "", remindedAt: null, reminderCount: 0,
-      comments: input.comments ?? "", arrivedAt: null, lateEta: null, feedback: null, clientId: input.clientId ?? null,
+      comments: input.comments ?? "", arrivedAt: null, lateEta: null, feedback: null,
+      attachments: (input.attachmentIds ?? []).map((aid) => s.files.find((f) => f.id === aid)).filter((f): f is DemoFile => !!f).map(fileLink), clientId: input.clientId ?? null,
       home: l ? snapshot(l) : { address: m!.address, city: "", photoUrl: null, beds: null, baths: null, sqft: null },
     };
     s.requests.push(created);
@@ -304,17 +325,50 @@ export const demoRepo: Repo = {
       id, address: input.address, city: input.city, side: input.side, stage: "Under contract",
       acceptanceDate: input.acceptanceDate, closingDate: input.closingDate, loanType: input.loanType, clientName: input.clientName,
       clientId: input.clientId ?? null, hasHoa: input.hasHoa,
+      earnestAmount: input.earnestAmount, earnestHolder: input.earnestHolder, earnestHolderName: input.earnestHolderName,
       members: [
-        { role: input.side === "seller" ? "listing_agent" : "buyers_agent", name: s.me.fullName, isYou: true },
-        { role: input.side === "seller" ? "seller" : "buyer", name: input.clientName, phone: s.clients.find((c) => c.id === input.clientId)?.phone },
+        { id: `${id}-p0`, role: input.side === "seller" ? "listing_agent" : "buyers_agent", name: s.me.fullName, isYou: true },
+        { id: `${id}-p1`, role: input.side === "seller" ? "seller" : "buyer", name: input.clientName, phone: s.clients.find((c) => c.id === input.clientId)?.phone, email: s.clients.find((c) => c.id === input.clientId)?.email },
       ],
       milestones: input.milestones.map((m, i) => ({ id: `${id}-m${i}`, kind: m.kind, label: m.label, due: m.due, done: false })),
-      tasks: [], loanUpdates: [],
+      tasks: input.tasks.map((t, i) => ({ id: `${id}-t${i}`, ...t, done: false, source: "auto" as const })), loanUpdates: [],
     });
     const c = s.clients.find((x) => x.id === input.clientId);
     if (c && c.stage === "future") c.stage = "present";
     return id;
   },
+  async addDealMember(dealId, m) {
+    const d = store().deals.find((x) => x.id === dealId);
+    d?.members.push({ id: `${dealId}-p${Date.now()}`, ...m });
+  },
+  async removeDealMember(dealId, memberId) {
+    const d = store().deals.find((x) => x.id === dealId);
+    if (d) d.members = d.members.filter((m) => m.id !== memberId || m.isYou);
+  },
+  async addTask(dealId, t) {
+    const d = store().deals.find((x) => x.id === dealId);
+    d?.tasks.push({ id: `${dealId}-t${Date.now()}`, ...t, done: false, source: "manual" });
+  },
+  async saveAttachment(file) {
+    const f: DemoFile = { id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, token: crypto.randomUUID().replace(/-/g, ""), ...file };
+    store().files.push(f);
+    return { id: f.id, token: f.token };
+  },
+  async getAttachment(token) {
+    const f = store().files.find((x) => x.token === token);
+    return f ? { name: f.name, mime: f.mime, bytes: f.bytes } : null;
+  },
+  async listHomeShares() { return [...store().shares].sort((a, b) => b.createdAt.localeCompare(a.createdAt)); },
+  async shareHome(input) {
+    // Demo: you're previewing what a buyer sees; it lands in your own inbox.
+    store().shares.unshift({ id: `hs-${Date.now()}`, clientName: "Maria & Luis Alvarez (preview)", ...input, createdAt: new Date().toISOString(), seen: false });
+  },
+  async markShareSeen(id) { const x = store().shares.find((h) => h.id === id); if (x) x.seen = true; },
+  async setMyAgent(slug) { return slug.toLowerCase() === store().me.slug; },
+  async listMemberships() { return store().memberships; },
+  async addMembership(m) { store().memberships.push({ id: `mb-${Date.now()}`, ...m, dataAccess: "none" }); },
+  async removeMembership(id) { const s = store(); s.memberships = s.memberships.filter((m) => m.id !== id); },
+  async requestMlsAccess(id) { const m = store().memberships.find((x) => x.id === id); if (m && m.kind === "mls") m.dataAccess = "requested"; },
   async setMilestoneDate(dealId, milestoneId, due) {
     const d = store().deals.find((x) => x.id === dealId);
     const m = d?.milestones.find((x) => x.id === milestoneId);

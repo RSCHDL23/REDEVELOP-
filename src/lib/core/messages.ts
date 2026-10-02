@@ -25,7 +25,11 @@ export interface RequestDetails {
   preApproved: boolean;
   /** Extra notes typed by the agent. */
   comments?: string;
+  /** Private links to attached documents (pre-approval letter…). */
+  attachments?: { name: string; url: string }[];
 }
+
+const docsLine = (d: RequestDetails) => (d.attachments?.length ? `Attached: ${d.attachments.map((a) => `${a.name} ${a.url}`).join(" · ")}` : "");
 
 export interface Draft {
   method: ContactMethod;
@@ -45,6 +49,7 @@ export function textRequest(s: Sender, d: RequestDetails): string {
   return [
     `Hi ${d.listingAgentFirstName}, this is ${who(s)}. I would like to show ${d.address} on ${d.dayLabel} from ${d.timeLabel} to my ${buyers(d)}. Does that time work?`,
     d.comments ? `Note: ${d.comments}` : "",
+    docsLine(d),
     `Thank you! ${contactLine(s)}`,
   ].filter(Boolean).join(" ");
 }
@@ -67,6 +72,7 @@ export function emailRequest(s: Sender, d: RequestDetails): { subject: string; b
     `Phone: ${s.phone}`,
     s.email ? `Email: ${s.email}` : null,
     ...(d.comments ? ["", `Comments: ${d.comments}`] : []),
+    ...(d.attachments?.length ? ["", "Attached documents (private links, expire in 14 days):", ...d.attachments.map((a) => `• ${a.name}: ${a.url}`)] : []),
     "",
     "Please confirm, or suggest another time that works for your sellers.",
     "",

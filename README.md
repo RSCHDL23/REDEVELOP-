@@ -18,6 +18,8 @@ It's a phone-friendly web app. People can add it to their home screen like a reg
 | **Calendar** | Month view of showings, deal dates and anniversaries, with federal holidays, business days and bank-closed days marked |
 | **REmember** | Home anniversaries for past clients: a ready-to-send message and a "Happy Home-iversary" post every year |
 | **Leave-on-time alerts** | Today shows when to leave for your next showing based on where you are. If you're running late, one tap sends your ETA to the listing agent (and texts your buyers) |
+| **REsource** | Search quick answers (dual agency, disclosures, radon, lead paint, texting rules, fair housing ads, earnest money, attorney review, wire fraud) with the official sources, your association and MLS links, your saved forms, and client help like first-time buyer programs and property tax appeals, each with a Share button |
+| **Homes from buyers** | Buyers send homes from Zillow, Redfin or Realtor.com to their agent (paste a link, or use the phone's Share menu on Android). They land in Clients and on Today with a one-tap "Request showing" |
 | **Clients** | Present, Future (new leads, including people who connect through your link) and Past. Text, call, email, request a showing or start a deal from each client |
 | **My link & QR** | Every professional gets a public page (`/p/your-name`) and QR code. Clients scan it, fill in their info, and land in Clients → Future |
 | **Deals** | Create a deal from the contract dates; every milestone date fills in and can be changed. Checking off Closing sets off a celebration and sends your client their after-closing checklist by text or email. Every deal shows progress and the next deadline. Each deal has dates (business days, skipping federal holidays), to-dos, people and lender loan updates |
@@ -39,14 +41,16 @@ With no database connected, the app runs in **demo mode**: any email and passwor
 ## Go live with Supabase (database, sign-in, file storage)
 
 1. Create a free project at <https://supabase.com>.
-2. In the project, open **SQL Editor → New query**. Paste everything from `supabase/migrations/0001_init.sql` and click **Run**. Then do the same with `0002_showing_updates.sql`, `0003_clients_links_deals.sql` and `0004_edits_reviews_remember.sql`. Always run the files in number order; each new update adds a new numbered file. This creates the tables, the security rules and the photo folders.
+2. In the project, open **SQL Editor → New query**. Paste everything from `supabase/migrations/0001_init.sql` and click **Run**. Then do the same with `0002_showing_updates.sql`, `0003_clients_links_deals.sql`, `0004_edits_reviews_remember.sql` and `0005_docs_shares_memberships.sql`. Always run the files in number order; each new update adds a new numbered file. This creates the tables, the security rules and the photo folders.
 3. Open **Project Settings → API**. Copy the **Project URL** and the **anon public** key.
 4. In this folder, copy `.env.example` to a new file named `.env.local` and fill it in:
    ```
    NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
    NEXT_PUBLIC_SITE_URL=http://localhost:3000
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    ```
+   The service role key (also under **Project Settings → API**) lets private document links open for agents who aren't on REschedule. It stays on the server. Never put it in a `NEXT_PUBLIC_` setting or share it.
 5. In Supabase, under **Authentication**:
    - **Sign In / Providers → Email**: keep **Confirm email** on.
    - **URL Configuration**: set Site URL to your site address and add `http://localhost:3000/**` and your live address followed by `/**` to Redirect URLs.

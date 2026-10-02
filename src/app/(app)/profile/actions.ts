@@ -171,3 +171,35 @@ export async function saveStartPlaces(_prev: FormState, formData: FormData): Pro
   if (missed.length) return { error: `Saved, but we couldn't find your ${missed.join(" and ")} address on the map. Check it, or use "Use where I am now".` };
   return { ok: "Saved." };
 }
+
+const membership = z.object({
+  kind: z.enum(["association", "mls"]),
+  name: z.string().trim().min(2, "Add the name.").max(100),
+  memberId: z.string().trim().max(40).optional().default(""),
+  url: z.string().trim().max(300).optional().default(""),
+});
+
+export async function addMembership(_prev: FormState, formData: FormData): Promise<FormState> {
+  const parsed = membership.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message };
+  let url = parsed.data.url;
+  if (url && !/^https:\/\//.test(url)) url = `https://${url.replace(/^http:\/\//, "")}`;
+  if (url && !/^https:\/\/[^\s]+\.[^\s]+$/.test(url)) return { error: "Check the website link." };
+  await repo().addMembership({ ...parsed.data, url });
+  revalidatePath("/profile");
+  revalidatePath("/resources");
+  return { ok: "Added." };
+}
+
+export async function removeMembership(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (id) await repo().removeMembership(id);
+  revalidatePath("/profile");
+  revalidatePath("/resources");
+}
+
+export async function requestMlsAccess(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (id) await repo().requestMlsAccess(id);
+  revalidatePath("/profile");
+}

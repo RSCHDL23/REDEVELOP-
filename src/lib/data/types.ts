@@ -28,6 +28,44 @@ export interface Profile {
   reviewLinks: Website[];
   rememberAuto: boolean;
   rememberChannel: "text" | "email";
+  /** The agent's own library of forms and links (REsource). */
+  myResources: MyResource[];
+  /** For buyers and sellers: the agent they send homes to. */
+  myAgent: { name: string; slug: string } | null;
+}
+
+export interface MyResource {
+  title: string;
+  url: string;
+  category: string;
+}
+
+export interface Membership {
+  id: string;
+  kind: "association" | "mls";
+  name: string;
+  memberId: string;
+  url: string;
+  dataAccess: "none" | "requested" | "connected";
+}
+
+export interface Attachment {
+  id: string;
+  name: string;
+  /** Private link: /d/{token} */
+  url: string;
+}
+
+export interface HomeShare {
+  id: string;
+  clientName: string;
+  url: string;
+  source: "zillow" | "redfin" | "realtor";
+  address: string;
+  note: string;
+  wantsTour: boolean;
+  createdAt: string;
+  seen: boolean;
 }
 
 export interface Place {
@@ -175,6 +213,7 @@ export interface ShowingRequest {
   /** Requester said they're running late; when they expect to arrive. */
   lateEta: string | null;
   feedback: ShowingFeedback | null;
+  attachments: Attachment[];
   clientId: string | null;
   home: HomeSnapshot;
 }
@@ -197,6 +236,7 @@ export interface TourContext {
 }
 
 export interface DealMember {
+  id: string;
   role: Role;
   name: string;
   phone?: string;
@@ -218,6 +258,8 @@ export interface DealTask {
   assignee: string;
   due: string | null;
   done: boolean;
+  /** "auto" = made from the deal's to-do template. */
+  source: "auto" | "manual";
 }
 
 export interface LoanUpdate {
@@ -240,6 +282,9 @@ export interface Deal {
   clientName: string;
   clientId: string | null;
   hasHoa: boolean;
+  earnestAmount: number | null;
+  earnestHolder: EarnestHolder | null;
+  earnestHolderName: string;
   members: DealMember[];
   milestones: Milestone[];
   tasks: DealTask[];
@@ -252,3 +297,5 @@ export interface WeeklyHours {
   end: number;
   on: boolean;
 }
+
+export type EarnestHolder = "listing_brokerage" | "buyer_brokerage" | "title_company" | "attorney" | "builder" | "other";

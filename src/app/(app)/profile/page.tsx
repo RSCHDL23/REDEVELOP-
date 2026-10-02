@@ -12,7 +12,8 @@ import { MAP_APPS } from "@/lib/data/requestMessages";
 import { ContactForm, DetailsForm, IdChoiceForm, LicenseForm, StartPlacesForm, WebsitesForm } from "./Forms";
 import { LinkShare } from "./LinkShare";
 import { MfaSetup } from "./MfaSetup";
-import { removeLicense, removeWork, saveMapApp } from "./actions";
+import { removeLicense, removeMembership, removeWork, requestMlsAccess, saveMapApp } from "./actions";
+import { AddMembershipForm } from "./Memberships";
 
 export const metadata: Metadata = { title: "Profile" };
 
@@ -41,7 +42,7 @@ const LICENSE_STATUS = {
 
 export default async function ProfilePage() {
   const r = repo();
-  const [me, licenses, pref, work, reviews] = await Promise.all([r.getMe(), r.listLicenses(), r.getContactPreference(), r.listPortfolio(), r.listMyReviews()]);
+  const [me, licenses, pref, work, reviews, memberships] = await Promise.all([r.getMe(), r.listLicenses(), r.getContactPreference(), r.listPortfolio(), r.listMyReviews(), r.listMemberships()]);
   const avg = reviews.length ? reviews.reduce((a, x) => a + x.stars, 0) / reviews.length : 0;
   const roles = rolesFor(licenses, me.selfRoles);
   const isPro = licenses.length > 0 || roles.some((x) => !CLIENT_ROLES.includes(x));
@@ -80,6 +81,11 @@ export default async function ProfilePage() {
         <section className="stack" id="my-link">
           <h2 className="section-label">My link &amp; QR code</h2>
           <LinkShare url={myUrl} qrSvg={qrSvg} name={me.fullName} />
+          <div className="card small" style={{ gap: 4 }}>
+            <span className="strong">Buyers can send you homes from Zillow, Redfin and Realtor.com</span>
+            <span className="muted">Share this link with clients who use REschedule:</span>
+            <span className="strong tabular" style={{ wordBreak: "break-all" }}>{myUrl.replace(`/p/${me.slug}`, `/homes/share?agent=${me.slug}`)}</span>
+          </div>
           {!licenses.some((l) => l.status === "verified") && <p className="notice amber small">Your public page goes live once one of your licenses is verified.</p>}
         </section>
       )}
@@ -128,6 +134,37 @@ export default async function ProfilePage() {
           </div>
         )}
       </section>
+
+      {isPro && (
+        <section className="stack" id="memberships">
+          <h2 className="section-label">Associations &amp; MLS</h2>
+          <p className="small muted" style={{ margin: 0 }}>Your REALTOR® associations, local boards and MLSs. Their forms and member resources show up in REsource.</p>
+          {memberships.length > 0 && (
+            <ul className="list">
+              {memberships.map((m) => (
+                <li key={m.id} className="stack" style={{ gap: 6 }}>
+                  <div className="between" style={{ alignItems: "flex-start" }}>
+                    <span className="stack" style={{ gap: 1 }}>
+                      <span className="strong">{m.name}</span>
+                      <span className="tiny muted">{m.kind === "mls" ? "MLS" : "Association"}{m.memberId ? ` · Member ID ${m.memberId}` : ""}</span>
+                    </span>
+                    {m.kind === "mls" && <span className={`pill ${m.dataAccess === "connected" ? "blue" : m.dataAccess === "requested" ? "amber" : ""}`}>{m.dataAccess === "connected" ? "Listings connected" : m.dataAccess === "requested" ? "Access requested" : "Listings not connected"}</span>}
+                  </div>
+                  <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                    {m.url && <a className="btn" style={{ minHeight: 34 }} href={m.url} target="_blank" rel="noreferrer">Website ↗</a>}
+                    {m.kind === "mls" && m.dataAccess === "none" && (
+                      <form action={requestMlsAccess}><input type="hidden" name="id" value={m.id} /><button className="btn" style={{ minHeight: 34 }}>Request listing data</button></form>
+                    )}
+                    <form action={removeMembership}><input type="hidden" name="id" value={m.id} /><button className="btn danger" style={{ minHeight: 34, border: 0 }} aria-label={`Remove ${m.name}`}>Remove</button></form>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <AddMembershipForm />
+          <p className="tiny muted" style={{ margin: 0 }}>Showing MLS listings in REschedule needs your MLS&apos;s approval (a data license). Requesting it lets us start that with your member ID.</p>
+        </section>
+      )}
 
       {isPro && (
         <section className="stack">

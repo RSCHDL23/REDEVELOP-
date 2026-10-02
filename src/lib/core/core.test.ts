@@ -238,3 +238,31 @@ describe("REmember anniversaries", () => {
     expect(anniversaryMessage({ clientFirst: "Chidi", years: 2, agentName: "Donna", agentPhone: "1" })).toContain("2nd home anniversary");
   });
 });
+
+import { dealTodoTemplate } from "./tasks";
+describe("deal to-do template", () => {
+  const milestones = contractMilestones({ acceptance: "2026-10-05", closing: "2026-11-20", mortgageContingencyDays: 21, hasHoa: true });
+  it("builds buyer to-dos from the dates, loan and HOA", () => {
+    const t = dealTodoTemplate({ side: "buyer", loanType: "Conventional", hasHoa: true, acceptance: "2026-10-05", milestones, earnestHolder: "the title company" });
+    expect(t.some((x) => x.title.includes("appraisal"))).toBe(true);
+    expect(t.some((x) => x.title.includes("HOA"))).toBe(true);
+    expect(t[0].due! <= t[t.length - 1].due!).toBe(true);
+    expect(t.find((x) => x.title.startsWith("Deliver earnest"))!.title).toContain("the title company");
+  });
+  it("skips loan steps for cash and HOA steps without an HOA", () => {
+    const t = dealTodoTemplate({ side: "seller", loanType: "Cash", hasHoa: false, acceptance: "2026-10-05", milestones });
+    expect(t.some((x) => x.title.includes("appraisal"))).toBe(false);
+    expect(t.some((x) => x.title.includes("HOA"))).toBe(false);
+  });
+});
+
+import { firstUrl, parseListingUrl } from "./listingLinks";
+describe("home links from listing sites", () => {
+  it("reads addresses from Zillow, Redfin and Realtor.com links", () => {
+    expect(parseListingUrl("https://www.zillow.com/homedetails/2519-W-Giddings-St-Chicago-IL-60625/12345_zpid/")).toMatchObject({ site: "zillow", address: "2519 W Giddings St Chicago, IL 60625" });
+    expect(parseListingUrl("https://www.redfin.com/IL/Chicago/2519-W-Giddings-St-60625/home/12345")).toMatchObject({ site: "redfin", address: "2519 W Giddings St, Chicago, IL 60625" });
+    expect(parseListingUrl("https://www.realtor.com/realestateandhomes-detail/2519-W-Giddings-St_Chicago_IL_60625_M12345-67890")).toMatchObject({ site: "realtor", address: "2519 W Giddings St, Chicago, IL 60625" });
+    expect(parseListingUrl("https://example.com/home/1")).toBeNull();
+    expect(firstUrl("Check this out! https://www.redfin.com/IL/Chicago/x-60625/home/1 nice")).toBe("https://www.redfin.com/IL/Chicago/x-60625/home/1");
+  });
+});

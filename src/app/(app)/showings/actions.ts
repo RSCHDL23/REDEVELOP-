@@ -6,6 +6,7 @@ import { z } from "zod";
 import { repo } from "@/lib/data";
 import { toTimestamp } from "@/lib/data/dates";
 import { sendLinkFor } from "@/lib/data/requestMessages";
+import { appOrigin } from "@/lib/server/origin";
 
 function refresh() {
   revalidatePath("/showings");
@@ -87,7 +88,12 @@ const newRequest = z.object({
   saveBuyer: z.string().optional(),
   comments: z.string().trim().max(500).optional().default(""),
   preApproved: z.string().optional(),
+  attachmentIds: z.string().optional().default("[]"),
 });
+
+const idList = (raw: string) => {
+  try { return z.array(z.string().min(1).max(64)).max(5).parse(JSON.parse(raw)); } catch { return []; }
+};
 
 export type NewRequestState = {
   error?: string;
@@ -145,6 +151,7 @@ export async function createRequest(_prev: NewRequestState, formData: FormData):
     endsAt: toTimestamp(f.date, start + f.minutes),
     method,
     comments: f.comments || undefined,
+    attachmentIds: idList(f.attachmentIds),
   });
   refresh();
 
@@ -152,7 +159,7 @@ export async function createRequest(_prev: NewRequestState, formData: FormData):
 
   // Not on REschedule: hand back a ready-to-send message.
   const [me, licenses] = await Promise.all([r.getMe(), r.listLicenses()]);
-  return { send: sendLinkFor(created, me, preApproved, licenses) };
+  return { send: sendLinkFor(created, me, preApproved, licenses, await appOrigin()) };
 }
 
 // ---------- Requester edits the request ----------

@@ -2,8 +2,11 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { addClient, type ClientState } from "./actions";
+import { TipsSender } from "./TipsButton";
+import { buyerDosAndDonts, sellerDosAndDonts } from "@/lib/core/clientTips";
+import { greetingName } from "@/lib/core/closing";
 
-export function AddClient({ stage }: { stage: string }) {
+export function AddClient({ stage, agentName, agentPhone }: { stage: string; agentName: string; agentPhone: string }) {
   const [state, action, pending] = useActionState<ClientState, FormData>(addClient, {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => { if (state.ok) form.current?.reset(); }, [state]);
@@ -36,6 +39,17 @@ export function AddClient({ stage }: { stage: string }) {
         <label className="row small" style={{ cursor: "pointer" }}><input type="checkbox" name="preApproved" style={{ width: 20, height: 20 }} /> Pre-approved</label>
         {state.error && <p className="error" role="alert">{state.error}</p>}
         {state.ok && <p className="small strong" role="status" style={{ color: "var(--green)", margin: 0 }}>✓ {state.ok}</p>}
+        {state.added && (
+          <TipsSender
+            key={state.added.name + state.ok}
+            startOpen
+            name={state.added.name}
+            phone={state.added.phone}
+            email={state.added.email}
+            title={state.added.intent === "Selling" ? "Seller do's and don'ts" : "Homebuyer do's and don'ts"}
+            message={(state.added.intent === "Selling" ? sellerDosAndDonts : buyerDosAndDonts)({ clientFirst: greetingName(state.added.name), agentName, agentPhone })}
+          />
+        )}
         <button className="btn dark block" disabled={pending}>{pending ? "Adding…" : "Add client"}</button>
       </form>
     </details>

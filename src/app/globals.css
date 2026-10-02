@@ -39,6 +39,7 @@ body {
   font-size: 15px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+  overflow-wrap: anywhere; /* long links in messages wrap instead of widening the page */
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 a { color: var(--blue-text); font-weight: 800; text-decoration: none; }
@@ -72,6 +73,8 @@ a:hover { color: var(--blue-deep); }
 
 .btn { min-height: 46px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface); font-weight: 800; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; color: var(--ink); }
 .btn:hover { color: var(--ink); border-color: var(--ink); }
+.btn, .chip, .pill { overflow-wrap: normal; white-space: nowrap; flex-shrink: 0; }
+.btn.block { white-space: normal; flex-shrink: 1; }
 .btn.primary { background: var(--blue); border-color: var(--blue); color: var(--ink); font-weight: 900; }
 .btn.primary:hover { background: #0e98d8; }
 .btn.dark { background: var(--ink); border-color: var(--ink); color: #fff; }
@@ -139,7 +142,7 @@ textarea.input { padding: 12px 14px; min-height: 90px; resize: vertical; }
 
 /* Bottom tab bar */
 .tabbar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 520px; display: flex; background: var(--ink); padding: 8px 0 calc(10px + env(safe-area-inset-bottom)); z-index: 10; }
-.tabbar a { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--muted-2); font-size: 10.5px; font-weight: 700; min-height: 48px; justify-content: center; }
+.tabbar a { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--muted-2); font-size: 10px; letter-spacing: -0.01em; font-weight: 700; min-height: 48px; justify-content: center; }
 .tabbar a[aria-current="page"] { color: var(--blue); }
 
 .demo-banner { background: var(--amber-soft); color: var(--amber); font-size: 12px; font-weight: 800; padding: 6px 12px; text-align: center; }

@@ -6,7 +6,8 @@ import { prettyDate, todayISO } from "@/lib/data/dates";
 import { daysUntil } from "@/lib/core/deadlines";
 import { can, needsDualRoleDisclosure, rolesFor } from "@/lib/core/access";
 import { BackLink, Initials } from "@/components/ui";
-import { postLoanUpdate, setMilestoneDate, toggleMilestone, toggleTask } from "../actions";
+import { postLoanUpdate, removePerson, setMilestoneDate, toggleMilestone, toggleTask } from "../actions";
+import { AddPersonForm, AddTodoForm } from "./DealForms";
 import { checklistMessage, greetingName, reviewRequestMessage, type ClosingSide } from "@/lib/core/closing";
 import { appOrigin } from "@/lib/server/origin";
 import { Celebration } from "./Celebration";
@@ -25,6 +26,11 @@ const ROLE_NAME: Record<string, string> = {
   buyers_agent: "Buyer's agent", listing_agent: "Listing agent", buyer: "Buyer", seller: "Seller", lender: "Lender",
   attorney: "Attorney", transaction_coordinator: "Transaction coordinator", inspector: "Inspector", appraiser: "Appraiser",
   title: "Title", insurance: "Insurance",
+};
+
+const EARNEST_LABEL: Record<string, string> = {
+  listing_brokerage: "Listing brokerage escrow", buyer_brokerage: "Buyer's brokerage escrow", title_company: "Title company",
+  attorney: "Attorney escrow", builder: "Builder", other: "Other",
 };
 
 const LOAN_STATUSES = ["Application received", "Appraisal ordered", "Appraisal in", "Conditional approval", "Clear to close", "Docs sent to title", "Funded"];
@@ -80,6 +86,16 @@ export default async function DealPage({ params, searchParams }: { params: Promi
         <div className="card accent" style={{ gap: 2 }}><span className="tiny muted strong">To close</span><span className="strong tabular">{toClose >= 0 ? `${toClose} days` : "Closed"}</span></div>
       </section>
 
+      {(deal.earnestAmount != null || deal.earnestHolder) && (
+        <div className="card small" style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+          <span aria-hidden="true" style={{ fontSize: 22 }}>💵</span>
+          <span>
+            <span className="strong">Earnest money{deal.earnestAmount != null ? `: ${deal.earnestAmount.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}` : ""}</span>
+            {deal.earnestHolder && <> · held by {deal.earnestHolderName || EARNEST_LABEL[deal.earnestHolder]}{deal.earnestHolderName ? ` (${EARNEST_LABEL[deal.earnestHolder].toLowerCase()})` : ""}</>}
+          </span>
+        </div>
+      )}
+
       {needsDualRoleDisclosure(myDealRoles) && (
         <p className="notice amber">You are both an agent and the lender on this deal. Give your client a written dual-role disclosure.</p>
       )}
@@ -124,6 +140,9 @@ export default async function DealPage({ params, searchParams }: { params: Promi
       )}
 
       {current === "tasks" && (
+        <>
+        <p className="small muted" style={{ margin: 0 }}>To-dos marked <span className="pill">Template</span> were made automatically when the deal was created, from its side, loan type, HOA and dates. Add your own anytime.</p>
+        <AddTodoForm dealId={deal.id} assignees={["You", ...new Set(deal.members.filter((m) => !m.isYou).map((m) => ROLE_NAME[m.role] ?? m.role))]} />
         <ul className="list">
           {deal.tasks.length === 0 && <li className="small muted">No to-dos yet.</li>}
           {deal.tasks.map((t) => (
@@ -138,16 +157,20 @@ export default async function DealPage({ params, searchParams }: { params: Promi
                   <span className="strong" style={{ textDecoration: t.done ? "line-through" : undefined }}>{t.title}</span>
                   <span className="small muted">{t.assignee}{t.due ? ` · ${prettyDate(t.due)}` : ""}</span>
                 </span>
+                {t.source === "auto" && <span className="pill">Template</span>}
               </form>
             </li>
           ))}
         </ul>
+        </>
       )}
 
       {current === "people" && (
+        <>
+        <AddPersonForm dealId={deal.id} />
         <ul className="list">
-          {deal.members.map((m, i) => (
-            <li key={`${m.role}-${i}`} className="row">
+          {deal.members.map((m) => (
+            <li key={m.id} className="row" style={{ flexWrap: "wrap" }}>
               <Initials name={m.name} size={40} />
               <span className="stack" style={{ gap: 1, flex: 1 }}>
                 <span className="strong">{m.name}{m.isYou ? " (you)" : ""}</span>
@@ -155,9 +178,17 @@ export default async function DealPage({ params, searchParams }: { params: Promi
               </span>
               {m.phone && !m.isYou && <a className="btn" href={`sms:${m.phone.replace(/[^\d+]/g, "")}`} aria-label={`Text ${m.name}`}>Text</a>}
               {m.email && !m.isYou && <a className="btn" href={`mailto:${m.email}`} aria-label={`Email ${m.name}`}>Email</a>}
+              {!m.isYou && (
+                <form action={removePerson}>
+                  <input type="hidden" name="dealId" value={deal.id} />
+                  <input type="hidden" name="memberId" value={m.id} />
+                  <button className="btn danger" style={{ border: 0, minHeight: 36, padding: "0 8px" }} aria-label={`Remove ${m.name}`}>✕</button>
+                </form>
+              )}
             </li>
           ))}
         </ul>
+        </>
       )}
 
       {current === "loan" && (

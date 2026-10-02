@@ -2,12 +2,25 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { addDays, contractMilestones } from "@/lib/core/deadlines";
+import { dealTodoTemplate } from "@/lib/core/tasks";
 import { prettyDate } from "@/lib/data/dates";
 import { createDeal, type NewDealState } from "../actions";
 
 const LOANS = ["Conventional", "FHA", "VA", "USDA", "Cash", "Other"];
 
-export function NewDealForm({ clients, defaultClient, today }: { clients: { id: string; name: string; intent: string }[]; defaultClient?: string; today: string }) {
+const HOLDERS = [
+  { id: "listing_brokerage", label: "Listing brokerage escrow", short: "the listing brokerage" },
+  { id: "buyer_brokerage", label: "Buyer's brokerage escrow", short: "the buyer's brokerage" },
+  { id: "title_company", label: "Title company", short: "the title company" },
+  { id: "attorney", label: "Attorney escrow", short: "the attorney" },
+  { id: "builder", label: "Builder", short: "the builder" },
+  { id: "other", label: "Other", short: "the escrow holder" },
+];
+
+export function NewDealForm({ clients, defaultClient, today, homes }: {
+  clients: { id: string; name: string; intent: string }[]; defaultClient?: string; today: string;
+  homes: { group: string; address: string; city: string }[];
+}) {
   const [state, action, pending] = useActionState<NewDealState, FormData>(createDeal, {});
   const [clientId, setClientId] = useState(clients.some((c) => c.id === defaultClient) ? defaultClient! : clients[0]?.id ?? "new");
   const [acceptance, setAcceptance] = useState(today);
@@ -19,6 +32,12 @@ export function NewDealForm({ clients, defaultClient, today }: { clients: { id: 
   const [inspection, setInspection] = useState(5);
   const [mortgage, setMortgage] = useState(21);
   const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [side, setSide] = useState<"buyer" | "seller" | "both">("buyer");
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [pick, setPick] = useState(homes.length ? "" : "manual");
+  const [holder, setHolder] = useState("");
+  const [skipped, setSkipped] = useState<Set<string>>(new Set());
 
   const computed = useMemo(() => {
     if (!acceptance || !closing) return [];
@@ -31,15 +50,42 @@ export function NewDealForm({ clients, defaultClient, today }: { clients: { id: 
   const milestones = computed.map((m) => ({ ...m, due: m.kind === "closing" || m.kind === "accepted" ? m.due : overrides[m.kind] ?? m.due, edited: !!overrides[m.kind] && m.kind !== "closing" && m.kind !== "accepted" }));
 
   const num = (v: string, set: (n: number) => void) => set(Math.max(0, Math.min(90, Number(v) || 0)));
+  const todos = useMemo(() => (acceptance && closing ? dealTodoTemplate({
+    side, loanType: loan, hasHoa: hoa, acceptance, milestones: milestones.map(({ kind, due }) => ({ kind, due })),
+    earnestHolder: HOLDERS.find((h) => h.id === holder)?.short,
+  }) : []), [side, loan, hoa, acceptance, closing, holder, JSON.stringify(milestones.map((m) => m.due))]); // eslint-disable-line react-hooks/exhaustive-deps
+  const groups = [...new Set(homes.map((h) => h.group))];
 
   return (
     <form action={action} className="stack" style={{ gap: 14 }}>
       <div className="card">
-        <div className="field"><label htmlFor="address">Property address</label><input id="address" name="address" className="input" required maxLength={160} placeholder="e.g. 2840 W Leland Ave" /></div>
-        <div className="field"><label htmlFor="city">City, state</label><input id="city" name="city" className="input" required maxLength={80} placeholder="Chicago, IL" /></div>
+        {homes.length > 0 && (
+          <div className="field">
+            <label htmlFor="home">Property</label>
+            <select id="home" className="input" value={pick} onChange={(e) => {
+              setPick(e.target.value);
+              const h = homes[Number(e.target.value)];
+              if (h) { setAddress(h.address); setCity(h.city); } else if (e.target.value === "manual") { setAddress(""); setCity(""); }
+            }}>
+              <option value="" disabled>Pick from your showings or listings…</option>
+              {groups.map((g) => (
+                <optgroup key={g} label={g}>
+                  {homes.map((h, i) => h.group === g && <option key={i} value={i}>{h.address}{h.city ? `, ${h.city}` : ""}</option>)}
+                </optgroup>
+              ))}
+              <option value="manual">+ Type a different address</option>
+            </select>
+          </div>
+        )}
+        {pick !== "" && (
+          <>
+            <div className="field"><label htmlFor="address">Property address</label><input id="address" name="address" className="input" required maxLength={160} placeholder="e.g. 2840 W Leland Ave" value={address} onChange={(e) => setAddress(e.target.value)} /></div>
+            <div className="field"><label htmlFor="city">City, state</label><input id="city" name="city" className="input" required maxLength={80} placeholder="Chicago, IL" value={city} onChange={(e) => setCity(e.target.value)} /></div>
+          </>
+        )}
         <div className="field">
           <label htmlFor="side">You represent</label>
-          <select id="side" name="side" className="input" defaultValue="buyer">
+          <select id="side" name="side" className="input" value={side} onChange={(e) => setSide(e.target.value as typeof side)}>
             <option value="buyer">The buyer</option>
             <option value="seller">The seller</option>
             <option value="both">Both sides</option>
@@ -80,6 +126,18 @@ export function NewDealForm({ clients, defaultClient, today }: { clients: { id: 
             <input type="checkbox" name="hasHoa" checked={hoa} onChange={(e) => setHoa(e.target.checked)} style={{ width: 20, height: 20 }} /> HOA or condo
           </label>
         </div>
+        <span className="strong" style={{ marginTop: 6 }}>Earnest money</span>
+        <div className="grid-2">
+          <div className="field"><label htmlFor="earnestAmount">Amount</label><input id="earnestAmount" name="earnestAmount" className="input" inputMode="decimal" placeholder="$5,000" maxLength={14} /></div>
+          <div className="field">
+            <label htmlFor="earnestHolder">Held by</label>
+            <select id="earnestHolder" name="earnestHolder" className="input" value={holder} onChange={(e) => setHolder(e.target.value)}>
+              <option value="">Choose…</option>
+              {HOLDERS.map((h) => <option key={h.id} value={h.id}>{h.label}</option>)}
+            </select>
+          </div>
+        </div>
+        {holder && <div className="field"><label htmlFor="earnestHolderName">Name of the {HOLDERS.find((h) => h.id === holder)?.label.toLowerCase()}</label><input id="earnestHolderName" name="earnestHolderName" className="input" maxLength={100} placeholder="e.g. Chicago Title, Downtown office" /></div>}
         <details>
           <summary className="small strong" style={{ cursor: "pointer", minHeight: 32 }}>Contract periods (days)</summary>
           <div className="grid-2" style={{ marginTop: 8 }}>
@@ -116,6 +174,25 @@ export function NewDealForm({ clients, defaultClient, today }: { clients: { id: 
           ))}
         </ul>
       </section>
+
+      <section className="stack">
+        <h2 className="section-label">To-dos ({todos.length - skipped.size})</h2>
+        <p className="small muted" style={{ margin: 0 }}>Made from this deal&apos;s side, loan type, HOA and dates. Uncheck any you don&apos;t need; you can add your own on the deal anytime.</p>
+        <ul className="list">
+          {todos.map((t) => (
+            <li key={t.title}>
+              <label className="row" style={{ alignItems: "flex-start", cursor: "pointer" }}>
+                <input type="checkbox" checked={!skipped.has(t.title)} onChange={(e) => setSkipped((sk) => { const n = new Set(sk); if (e.target.checked) n.delete(t.title); else n.add(t.title); return n; })} style={{ width: 20, height: 20, marginTop: 2 }} />
+                <span className="stack" style={{ gap: 0 }}>
+                  <span className="small strong">{t.title}</span>
+                  <span className="tiny muted">{t.assignee}{t.due ? ` · ${prettyDate(t.due)}` : ""}</span>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <input type="hidden" name="tasks" value={JSON.stringify(todos.filter((t) => !skipped.has(t.title)))} />
 
       <input type="hidden" name="milestones" value={JSON.stringify(milestones.map(({ kind, label, due }) => ({ kind, label, due })))} />
       {state.error && <p className="error" role="alert">{state.error}</p>}

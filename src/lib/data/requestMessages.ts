@@ -15,7 +15,7 @@ export function licenseIdFor(licenses: License[], state?: string): string | unde
 
 export const stateOf = (cityLine: string) => cityLine.match(/\b([A-Z]{2})\b\s*$/)?.[1];
 
-export function detailsFor(r: ShowingRequest, preApproved = true): RequestDetails {
+export function detailsFor(r: ShowingRequest, preApproved = true, origin = ""): RequestDetails {
   return {
     listingAgentFirstName: r.otherAgent.name.split(" ")[0] || "there",
     address: r.address,
@@ -24,6 +24,7 @@ export function detailsFor(r: ShowingRequest, preApproved = true): RequestDetail
     buyerNames: r.buyerLabel,
     preApproved,
     comments: r.comments || undefined,
+    attachments: r.attachments.length ? r.attachments.map((a) => ({ name: a.name, url: `${origin}${a.url}` })) : undefined,
   };
 }
 
@@ -39,14 +40,14 @@ const contactOf = (r: ShowingRequest, onApp = r.otherAgent.onApp) => {
   return { preferred: a.contact.preferred, phone: a.phone, email: a.email, onApp, onlineUrl: a.contact.onlineUrl };
 };
 
-export function nudgeFor(kind: "remind" | "resend", r: ShowingRequest, me: Profile, licenses: License[] = []): { draft: Draft; href: string | null } {
-  const draft = nudgeDraft(kind, senderFrom(me, licenses, stateOf(r.home.city)), detailsFor(r), contactOf(r));
+export function nudgeFor(kind: "remind" | "resend", r: ShowingRequest, me: Profile, licenses: License[] = [], origin = ""): { draft: Draft; href: string | null } {
+  const draft = nudgeDraft(kind, senderFrom(me, licenses, stateOf(r.home.city)), detailsFor(r, true, origin), contactOf(r));
   return { draft, href: deviceLink(draft) };
 }
 
 /** The first message for an agent who isn't on REschedule. */
-export function sendLinkFor(r: ShowingRequest, me: Profile, preApproved: boolean, licenses: License[] = []) {
-  const draft = nudgeDraft("resend", senderFrom(me, licenses, stateOf(r.home.city)), detailsFor(r, preApproved), contactOf(r, false));
+export function sendLinkFor(r: ShowingRequest, me: Profile, preApproved: boolean, licenses: License[] = [], origin = "") {
+  const draft = nudgeDraft("resend", senderFrom(me, licenses, stateOf(r.home.city)), detailsFor(r, preApproved, origin), contactOf(r, false));
   const first = detailsFor(r).listingAgentFirstName;
   const label = draft.method === "email" ? `Email ${first}` : draft.method === "call" ? `Call ${first}` : draft.method === "online" ? "Open their scheduler" : `Text ${first}`;
   return { href: deviceLink(draft) ?? "", label, body: draft.body, to: draft.to };

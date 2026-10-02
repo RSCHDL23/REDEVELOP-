@@ -5,7 +5,7 @@ import { hm, subtract, type Window } from "@/lib/core/time";
 import { contractMilestones } from "@/lib/core/deadlines";
 import type { Role } from "@/lib/core/access";
 import type { PublicProfile, Repo } from "./repo";
-import type { AgentSummary, Client, ClientStage, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, TourContext, WeeklyHours } from "./types";
+import type { AgentSummary, Attachment, Client, ClientStage, HomeShare, Membership, ContactPreference, Deal, License, Listing, PortfolioItem, Profile, ShowingRequest, TourContext, WeeklyHours } from "./types";
 import { dateOf, minutesOfDay, toTimestamp, weekdayOf } from "./dates";
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -51,7 +51,15 @@ const AGENT_FIELDS = "id, full_name, phone, email, brokerages(name), contact_pre
 const LISTING_SELECT = `*, agent:profiles!listings_listing_agent_id_fkey(${AGENT_FIELDS})`;
 const REQUEST_SELECT = `*, feedback:showing_feedback(*), listing:listings(address, city, state, beds, baths, sqft, lat, lng, photo_url, listing_agent_id, agent:profiles!listings_listing_agent_id_fkey(${AGENT_FIELDS})), requester:profiles!showing_requests_requesting_agent_id_fkey(${AGENT_FIELDS})`;
 
-function toRequest(r: Row, uid: string): ShowingRequest {
+/** Looks up attachment names and private links for a set of requests. */
+async function attachmentsFor(supabase: Awaited<ReturnType<typeof createClient>>, rows: Row[]): Promise<Map<string, Attachment>> {
+  const ids = [...new Set(rows.flatMap((r) => (r.attachment_ids ?? []) as string[]))];
+  if (!ids.length) return new Map();
+  const { data } = await supabase.from("attachments").select("id, token, file_name").in("id", ids);
+  return new Map(((data ?? []) as Row[]).map((a) => [a.id, { id: a.id, name: a.file_name, url: `/d/${a.token}` }]));
+}
+
+function toRequest(r: Row, uid: string, files: Map<string, Attachment> = new Map()): ShowingRequest {
   const sent = r.requesting_agent_id === uid;
   const typedIn = !r.listing_id;
   const other: AgentSummary = sent
@@ -67,6 +75,7 @@ function toRequest(r: Row, uid: string): ShowingRequest {
     remindedAt: r.reminded_at, reminderCount: Number(r.reminder_count ?? 0),
     comments: r.comments ?? "", arrivedAt: r.arrived_at ?? null, lateEta: r.late_eta ?? null, clientId: r.client_id ?? null,
     feedback: toFeedback(Array.isArray(r.feedback) ? r.feedback[0] : r.feedback),
+    attachments: ((r.attachment_ids ?? []) as string[]).map((id) => files.get(id)).filter((a): a is Attachment => !!a),
     home: {
       address: r.listing?.address ?? r.manual_address ?? "", city: r.listing ? `${r.listing.city}, ${r.listing.state}` : "",
       photoUrl: r.listing?.photo_url ?? null, beds: r.listing?.beds ?? null, baths: r.listing?.baths ?? null, sqft: r.listing?.sqft ?? null,
@@ -91,7 +100,7 @@ function toClient(r: Row): Client {
 export const supabaseRepo: Repo = {
   async getMe() {
     const { supabase, uid } = await session();
-    const p = check(await supabase.from("profiles").select("*, brokerages(name)").eq("id", uid).single()) as Row;
+    const p = check(await supabase.from("profiles").select("*, brokerages(name), my_agent:profiles!profiles_my_agent_id_fkey(full_name, slug)").eq("id", uid).single()) as Row;
     return {
       id: p.id, fullName: p.full_name, email: p.email ?? "", phone: p.phone ?? "", tagline: p.tagline ?? "", bio: p.bio ?? "",
       headshotUrl: publicUrl(supabase, "avatars", p.headshot_path), logoUrl: publicUrl(supabase, "logos", p.logo_path),
@@ -101,6 +110,8 @@ export const supabaseRepo: Repo = {
       home: p.home_address ? { address: p.home_address, lat: p.home_lat, lng: p.home_lng } : null,
       office: p.office_address ? { address: p.office_address, lat: p.office_lat, lng: p.office_lng } : null,
       reviewLinks: Array.isArray(p.review_links) ? p.review_links : [], rememberAuto: p.remember_auto ?? true, rememberChannel: p.remember_channel ?? "text",
+      myResources: Array.isArray(p.my_resources) ? p.my_resources : [],
+      myAgent: p.my_agent ? { name: p.my_agent.full_name, slug: p.my_agent.slug } : null,
     } satisfies Profile;
   },
   async updateMe(patch) {
@@ -120,6 +131,7 @@ export const supabaseRepo: Repo = {
     if (patch.reviewLinks !== undefined) row.review_links = patch.reviewLinks.slice(0, 8);
     if (patch.rememberAuto !== undefined) row.remember_auto = patch.rememberAuto;
     if (patch.rememberChannel !== undefined) row.remember_channel = patch.rememberChannel;
+    if (patch.myResources !== undefined) row.my_resources = patch.myResources.slice(0, 40);
     // For uploads, headshotUrl and logoUrl carry the storage path of the new file.
     if (patch.headshotUrl !== undefined) row.headshot_path = patch.headshotUrl;
     if (patch.logoUrl !== undefined) row.logo_path = patch.logoUrl;
@@ -176,7 +188,8 @@ export const supabaseRepo: Repo = {
   async listRequests() {
     const { supabase, uid } = await session();
     const rows = check(await supabase.from("showing_requests").select(REQUEST_SELECT).order("starts_at").limit(500)) as Row[];
-    return rows.map((r) => toRequest(r, uid));
+    const files = await attachmentsFor(supabase, rows);
+    return rows.map((r) => toRequest(r, uid, files));
   },
   async decideRequest(id, answer) {
     const { supabase } = await session();
@@ -215,10 +228,10 @@ export const supabaseRepo: Repo = {
       starts_at: input.startsAt, ends_at: input.endsAt, method: input.method,
       manual_address: input.manual?.address ?? null, manual_agent_name: input.manual?.agentName || null,
       manual_agent_phone: input.manual?.agentPhone || null, manual_agent_email: input.manual?.agentEmail || null,
-      comments: input.comments?.slice(0, 500) || null,
+      comments: input.comments?.slice(0, 500) || null, attachment_ids: input.attachmentIds ?? [],
     }).select(REQUEST_SELECT).single()) as Row;
     if (input.clientId) await supabase.from("clients").update({ stage: "present" }).eq("id", input.clientId).eq("stage", "future");
-    return toRequest(row, uid);
+    return toRequest(row, uid, await attachmentsFor(supabase, [row]));
   },
   async markArrived(id) {
     const { supabase } = await session();
@@ -358,6 +371,8 @@ export const supabaseRepo: Repo = {
     const deal = check(await supabase.from("deals").insert({
       property_address: input.address, city: input.city, side: input.side, acceptance_date: input.acceptanceDate, closing_date: input.closingDate,
       loan_type: input.loanType, created_by: uid, client_id: input.clientId ?? null, has_hoa: input.hasHoa,
+      earnest_amount_cents: input.earnestAmount != null ? Math.round(input.earnestAmount * 100) : null,
+      earnest_holder: input.earnestHolder, earnest_holder_name: input.earnestHolderName || null,
     }).select("id").single()) as Row;
     const agentRole = input.side === "seller" ? "listing_agent" : "buyers_agent";
     check(await supabase.from("deal_members").insert([
@@ -365,8 +380,76 @@ export const supabaseRepo: Repo = {
       { deal_id: deal.id, profile_id: null, role: input.side === "seller" ? "seller" : "buyer", display_name: input.clientName, phone: client?.phone ?? null, email: client?.email ?? null },
     ]));
     check(await supabase.from("milestones").insert(input.milestones.map((m, i) => ({ deal_id: deal.id, kind: m.kind, label: m.label, due_date: m.due, position: i }))));
+    if (input.tasks.length) check(await supabase.from("deal_tasks").insert(input.tasks.map((t) => ({ deal_id: deal.id, title: t.title, assignee_label: t.assignee, due_date: t.due, source: "auto" }))));
     if (input.clientId) await supabase.from("clients").update({ stage: "present" }).eq("id", input.clientId).eq("stage", "future");
     return deal.id as string;
+  },
+  async addDealMember(dealId, m) {
+    const { supabase } = await session();
+    check(await supabase.from("deal_members").insert({ deal_id: dealId, profile_id: null, role: m.role, display_name: m.name, phone: m.phone || null, email: m.email || null }));
+  },
+  async removeDealMember(dealId, memberId) {
+    const { supabase, uid } = await session();
+    check(await supabase.from("deal_members").delete().eq("id", memberId).eq("deal_id", dealId).neq("profile_id", uid));
+  },
+  async addTask(dealId, t) {
+    const { supabase } = await session();
+    check(await supabase.from("deal_tasks").insert({ deal_id: dealId, title: t.title, assignee_label: t.assignee || null, due_date: t.due, source: "manual" }));
+  },
+  async saveAttachment(file) {
+    const { supabase, uid } = await session();
+    const safe = file.name.replace(/[^\w.\- ]+/g, "_").slice(-80);
+    const path = `${uid}/${crypto.randomUUID()}-${safe}`;
+    const up = await supabase.storage.from("showing-docs").upload(path, file.bytes, { contentType: file.mime, upsert: false });
+    if (up.error) throw new Error(up.error.message);
+    const row = check(await supabase.from("attachments").insert({ owner_id: uid, file_path: path, file_name: file.name.slice(0, 120), mime: file.mime, size_bytes: file.bytes.byteLength }).select("id, token").single()) as Row;
+    return { id: row.id, token: row.token };
+  },
+  async getAttachment(token) {
+    const supabase = await createClient();
+    const { data } = await supabase.rpc("attachment_by_token", { p_token: token });
+    if (!data) return null;
+    const a = data as Row;
+    return { name: a.name, mime: a.mime, path: a.path };
+  },
+  async listHomeShares() {
+    const { supabase, uid } = await session();
+    const rows = check(await supabase.from("home_shares").select("*, client:profiles!home_shares_client_profile_id_fkey(full_name)").eq("agent_id", uid).order("created_at", { ascending: false }).limit(100)) as Row[];
+    return rows.map((r) => ({ id: r.id, clientName: r.client?.full_name ?? "Client", url: r.url, source: r.source, address: r.address ?? "", note: r.note ?? "", wantsTour: r.wants_tour, createdAt: r.created_at, seen: !!r.seen_at }) satisfies HomeShare);
+  },
+  async shareHome(input) {
+    const { supabase, uid } = await session();
+    const me = check(await supabase.from("profiles").select("my_agent_id").eq("id", uid).single()) as Row;
+    if (!me.my_agent_id) throw new Error("Choose your agent first");
+    check(await supabase.from("home_shares").insert({ client_profile_id: uid, agent_id: me.my_agent_id, url: input.url, source: input.source, address: input.address || null, note: input.note || null, wants_tour: input.wantsTour }));
+  },
+  async markShareSeen(id) {
+    const { supabase } = await session();
+    check(await supabase.from("home_shares").update({ seen_at: new Date().toISOString() }).eq("id", id));
+  },
+  async setMyAgent(slug) {
+    const { supabase, uid } = await session();
+    const pro = check(await supabase.from("profiles").select("id").eq("slug", slug.toLowerCase()).maybeSingle()) as Row | null;
+    if (!pro || pro.id === uid) return false;
+    check(await supabase.from("profiles").update({ my_agent_id: pro.id }).eq("id", uid));
+    return true;
+  },
+  async listMemberships() {
+    const { supabase, uid } = await session();
+    const rows = check(await supabase.from("memberships").select("*").eq("profile_id", uid).order("created_at")) as Row[];
+    return rows.map((r) => ({ id: r.id, kind: r.kind, name: r.name, memberId: r.member_id ?? "", url: r.url ?? "", dataAccess: r.data_access }) satisfies Membership);
+  },
+  async addMembership(m) {
+    const { supabase, uid } = await session();
+    check(await supabase.from("memberships").insert({ profile_id: uid, kind: m.kind, name: m.name, member_id: m.memberId || null, url: m.url || null }));
+  },
+  async removeMembership(id) {
+    const { supabase } = await session();
+    check(await supabase.from("memberships").delete().eq("id", id));
+  },
+  async requestMlsAccess(id) {
+    const { supabase } = await session();
+    check(await supabase.from("memberships").update({ data_access: "requested" }).eq("id", id).eq("kind", "mls"));
   },
   async setMilestoneDate(dealId, milestoneId, due) {
     const { supabase } = await session();
@@ -450,9 +533,12 @@ function toDeal(r: Row, uid: string): Deal {
     clientName: client?.display_name ?? "",
     clientId: r.client_id ?? null,
     hasHoa: !!r.has_hoa,
-    members: members.map((m) => ({ role: m.role as Role, name: m.display_name, phone: m.phone ?? undefined, email: m.email ?? undefined, isYou: m.profile_id === uid })),
+    earnestAmount: r.earnest_amount_cents != null ? Number(r.earnest_amount_cents) / 100 : null,
+    earnestHolder: r.earnest_holder ?? null,
+    earnestHolderName: r.earnest_holder_name ?? "",
+    members: members.map((m) => ({ id: m.id, role: m.role as Role, name: m.display_name, phone: m.phone ?? undefined, email: m.email ?? undefined, isYou: m.profile_id === uid })),
     milestones,
-    tasks: ((r.deal_tasks ?? []) as Row[]).map((t) => ({ id: t.id, title: t.title, assignee: t.assignee_label ?? "", due: t.due_date, done: t.done })),
+    tasks: ((r.deal_tasks ?? []) as Row[]).map((t) => ({ id: t.id, title: t.title, assignee: t.assignee_label ?? "", due: t.due_date, done: t.done, source: t.source === "auto" ? "auto" as const : "manual" as const })),
     loanUpdates: ((r.loan_updates ?? []) as Row[])
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .map((u) => ({ id: u.id, status: u.status, note: u.note ?? "", author: u.author?.full_name ?? "Lender", at: u.created_at })),
