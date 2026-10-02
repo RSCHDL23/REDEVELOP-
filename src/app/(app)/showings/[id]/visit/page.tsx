@@ -8,6 +8,7 @@ import { formatClock } from "@/lib/core/time";
 import { BackLink } from "@/components/ui";
 import { HomeSnapshot } from "@/components/HomeSnapshot";
 import { VisitFlow } from "./VisitFlow";
+import { PaymentEstimate } from "@/components/PaymentEstimate";
 
 export const metadata: Metadata = { title: "Showing" };
 
@@ -43,6 +44,11 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
       </section>
 
       {!visit.arrivedAt && <TripAlerts compact trips={tripsFor([visit], clients, me, day)} />}
+
+      <PaymentEstimate
+        price={visit.home.price ?? null}
+        buyer={client ? { name: client.name, naca: client.loanProgram === "naca", approvedMonthly: client.approvedMonthly, currentHousing: client.currentHousing } : undefined}
+      />
 
       <VisitFlow
         id={visit.id}

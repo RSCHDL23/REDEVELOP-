@@ -1,7 +1,11 @@
 "use client";
 
 import { useRef } from "react";
+import Link from "next/link";
 import type { HomeSnapshot as Snapshot } from "@/lib/data/types";
+import { paymentFromPrice } from "@/lib/core/mortgage";
+
+const usd = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
 /** Tap an address to see the home: photo, beds, baths and square feet. */
 export function HomeSnapshot({ home, className = "strong" }: { home: Snapshot; className?: string }) {
@@ -34,6 +38,14 @@ export function HomeSnapshot({ home, className = "strong" }: { home: Snapshot; c
         <div className="stack" style={{ padding: 16, gap: 6 }}>
           <span className="strong" style={{ fontSize: 18 }}>{home.address}</span>
           {home.city && <span className="small muted">{home.city}</span>}
+          {home.price ? (
+            <div className="between" style={{ marginTop: 2 }}>
+              <span className="strong tabular" style={{ fontSize: 20 }}>{usd(home.price)}</span>
+              <span className="small muted tabular">
+                ≈ {usd(paymentFromPrice(home.price, { downPct: 3.5, ratePct: 6.625, years: 30, taxRatePct: 2, insuranceYear: 1800, hoaMonth: 0, pmiPct: 0.5 }).total)}/mo
+              </span>
+            </div>
+          ) : null}
           {facts.length > 0
             ? <div className="grid-3" style={{ marginTop: 4 }}>
                 {[["Beds", home.beds], ["Baths", home.baths], ["Sq ft", home.sqft ? home.sqft.toLocaleString() : "–"]].map(([k, v]) => (
@@ -44,7 +56,11 @@ export function HomeSnapshot({ home, className = "strong" }: { home: Snapshot; c
                 ))}
               </div>
             : <span className="small muted">Home details aren&apos;t available for typed-in addresses.</span>}
-          <button type="button" className="btn block" style={{ marginTop: 8 }} onClick={() => dialog.current?.close()}>Close</button>
+          {home.price ? <span className="tiny muted">Estimate: 3.5% down, 6.625%, 30 years, with taxes, insurance and PMI.</span> : null}
+          <div className="grid-2" style={{ marginTop: 8 }}>
+            <Link className="btn block" href={`/calculator?mode=price${home.price ? `&price=${Math.round(home.price)}` : ""}`}>Mortgage calculator</Link>
+            <button type="button" className="btn block" onClick={() => dialog.current?.close()}>Close</button>
+          </div>
         </div>
       </dialog>
     </>

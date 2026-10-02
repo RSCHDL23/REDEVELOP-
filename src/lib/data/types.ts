@@ -135,6 +135,8 @@ export interface Listing {
   beds: number;
   baths: number;
   sqft: number | null;
+  /** List price in dollars, when known. */
+  price: number | null;
   instantShowings: boolean;
   showingMinutes: number;
   occupancy: "owner" | "vacant" | "tenant";
@@ -189,6 +191,7 @@ export interface HomeSnapshot {
   beds: number | null;
   baths: number | null;
   sqft: number | null;
+  price?: number | null;
   /** Map position, when known (for drive times and leave-now alerts). */
   lat?: number | null;
   lng?: number | null;

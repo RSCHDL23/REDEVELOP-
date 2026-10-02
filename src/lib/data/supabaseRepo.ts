@@ -40,7 +40,7 @@ function toAgent(p: Row | null, prefs: Row | null): AgentSummary {
 function toListing(r: Row): Listing {
   return {
     id: r.id, address: r.address, city: r.city, state: r.state, lat: r.lat ?? 41.88, lng: r.lng ?? -87.63,
-    beds: Number(r.beds ?? 0), baths: Number(r.baths ?? 0), sqft: r.sqft, instantShowings: r.instant_showings,
+    beds: Number(r.beds ?? 0), baths: Number(r.baths ?? 0), sqft: r.sqft, price: r.price_cents != null ? Number(r.price_cents) / 100 : null, instantShowings: r.instant_showings,
     showingMinutes: r.showing_minutes, occupancy: r.occupancy, note: r.occupancy === "tenant" ? "Tenant-occupied" : "",
     photoUrl: r.photo_url ?? null, source: r.source === "fsbo" ? "fsbo" : r.source === "app" ? "app" : "mls",
     listingAgent: toAgent(r.agent, r.agent?.contact_preferences ?? null),
@@ -49,7 +49,7 @@ function toListing(r: Row): Listing {
 
 const AGENT_FIELDS = "id, full_name, phone, email, brokerages(name), contact_preferences(*)";
 const LISTING_SELECT = `*, agent:profiles!listings_listing_agent_id_fkey(${AGENT_FIELDS})`;
-const REQUEST_SELECT = `*, feedback:showing_feedback(*), listing:listings(address, city, state, beds, baths, sqft, lat, lng, photo_url, listing_agent_id, agent:profiles!listings_listing_agent_id_fkey(${AGENT_FIELDS})), requester:profiles!showing_requests_requesting_agent_id_fkey(${AGENT_FIELDS})`;
+const REQUEST_SELECT = `*, feedback:showing_feedback(*), listing:listings(address, city, state, beds, baths, sqft, price_cents, lat, lng, photo_url, listing_agent_id, agent:profiles!listings_listing_agent_id_fkey(${AGENT_FIELDS})), requester:profiles!showing_requests_requesting_agent_id_fkey(${AGENT_FIELDS})`;
 
 /** Looks up attachment names and private links for a set of requests. */
 async function attachmentsFor(supabase: Awaited<ReturnType<typeof createClient>>, rows: Row[]): Promise<Map<string, Attachment>> {
@@ -80,6 +80,7 @@ function toRequest(r: Row, uid: string, files: Map<string, Attachment> = new Map
       address: r.listing?.address ?? r.manual_address ?? "", city: r.listing ? `${r.listing.city}, ${r.listing.state}` : "",
       photoUrl: r.listing?.photo_url ?? null, beds: r.listing?.beds ?? null, baths: r.listing?.baths ?? null, sqft: r.listing?.sqft ?? null,
       lat: r.listing?.lat ?? null, lng: r.listing?.lng ?? null,
+      price: r.listing?.price_cents != null ? Number(r.listing.price_cents) / 100 : null,
     },
   };
 }

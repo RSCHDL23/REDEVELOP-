@@ -8,7 +8,7 @@ import { HomeSnapshot } from "@/components/HomeSnapshot";
 import { AttachDocs } from "@/components/AttachDocs";
 import type { Attachment } from "@/lib/data/types";
 
-type Home = { id: string; address: string; city: string; photoUrl: string | null; source: string; agent: string; preferred: string; methods: string[]; minutes: number; instant: boolean; beds: number; baths: number; sqft: number | null };
+type Home = { id: string; address: string; city: string; photoUrl: string | null; source: string; agent: string; preferred: string; methods: string[]; minutes: number; instant: boolean; beds: number; baths: number; sqft: number | null; price: number | null };
 type ClientOption = { id: string; name: string; preApproved: boolean };
 
 const METHOD_LABEL: Record<string, string> = {
@@ -120,7 +120,7 @@ export function NewRequestForm({ homes, clients, defaultListing, defaultClient, 
         <div className="card row" style={{ flexDirection: "row", alignItems: "flex-start" }}>
           {home.photoUrl && <img src={home.photoUrl} alt={`Photo of ${home.address}`} className="thumb" />}
           <span className="stack small" style={{ gap: 2 }}>
-            <HomeSnapshot home={{ address: home.address, city: home.city, photoUrl: home.photoUrl, beds: home.beds, baths: home.baths, sqft: home.sqft }} />
+            <HomeSnapshot home={{ address: home.address, city: home.city, photoUrl: home.photoUrl, beds: home.beds, baths: home.baths, sqft: home.sqft, price: home.price }} />
             <span className="muted">{home.beds} bd · {home.baths} ba{home.sqft ? ` · ${home.sqft.toLocaleString()} sq ft` : ""}</span>
             <span><span className="strong">{home.agent}</span> takes requests by {home.methods.map((m) => METHOD_LABEL[m] ?? m).join(" or ")}.</span>
             {home.instant && <span className="pill blue" style={{ alignSelf: "flex-start" }}>Instant approval</span>}

@@ -134,8 +134,8 @@ export function TourBuilder({ ctx, sender, places, origin }: { ctx: TourContext;
               <label className="row" style={{ cursor: "pointer", alignItems: "flex-start" }}>
                 <input type="checkbox" checked={picked.has(l.id)} onChange={() => toggle(l.id)} style={{ width: 22, height: 22, marginTop: 2 }} />
                 <span className="stack" style={{ gap: 1, flex: 1 }}>
-                  <HomeSnapshot home={{ address: l.address, city: `${l.city}, ${l.state}`, photoUrl: l.photoUrl, beds: l.beds, baths: l.baths, sqft: l.sqft }} />
-                  <span className="small muted">{l.beds} bd · {l.baths} ba · {l.listingAgent.name}</span>
+                  <HomeSnapshot home={{ address: l.address, city: `${l.city}, ${l.state}`, photoUrl: l.photoUrl, beds: l.beds, baths: l.baths, sqft: l.sqft, price: l.price }} />
+                  <span className="small muted">{l.price ? `${l.price.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })} · ` : ""}{l.beds} bd · {l.baths} ba · {l.listingAgent.name}</span>
                   <span className="tiny muted tabular">Can show {windowsLabel(free)}</span>
                 </span>
                 {l.instantShowings && <span className="pill blue">Instant</span>}

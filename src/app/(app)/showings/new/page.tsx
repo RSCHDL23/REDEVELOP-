@@ -27,7 +27,7 @@ export default async function NewShowingPage({ searchParams }: { searchParams: P
           agent: l.listingAgent.name,
           preferred: l.listingAgent.onApp ? "app" : l.listingAgent.contact.preferred,
           methods: l.listingAgent.onApp ? ["app"] : l.listingAgent.contact.methods,
-          beds: l.beds, baths: l.baths, sqft: l.sqft,
+          beds: l.beds, baths: l.baths, sqft: l.sqft, price: l.price,
           minutes: l.showingMinutes,
           instant: l.instantShowings,
         }))}
